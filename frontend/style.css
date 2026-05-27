@@ -177,6 +177,17 @@ main{
     color:white;
 }
 
+/* Botão excluir personalizado */
+.excluir-btn {
+    background: #ff4444;
+    color: white;
+}
+
+.excluir-btn:hover {
+    background: #cc0000;
+    transform: scale(1.03);
+}
+
 .modal{
     width:100%;
     height:100vh;

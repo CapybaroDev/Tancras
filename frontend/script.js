@@ -165,6 +165,38 @@ async function criarPost() {
     }
 }
 
+// ========== EXCLUIR POST ==========
+async function excluirPost(id) {
+    const confirmar = confirm("Tem certeza que deseja excluir este post?")
+    if (!confirmar) return
+
+    if (!usuario) {
+        alert("Faça login")
+        return
+    }
+
+    try {
+        const resp = await fetch(`${API}/posts/${id}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ usuario_id: usuario.id })
+        })
+
+        if (resp.ok) {
+            // Remove o elemento do post do DOM
+            const postElement = document.getElementById(`post-${id}`)
+            if (postElement) postElement.remove()
+            alert("Post excluído com sucesso!")
+        } else {
+            const erro = await resp.json()
+            alert(erro.erro || "Erro ao excluir post.")
+        }
+    } catch(e) {
+        console.error("Erro ao excluir:", e)
+        alert("Erro de conexão ao excluir post.")
+    }
+}
+
 async function carregarFeed() {
     console.log("carregarFeed chamado")
     const feed = document.getElementById("feed")
@@ -193,6 +225,16 @@ async function carregarFeed() {
             if (comentarios.length > 3) {
                 comentariosHTML += `<button class="ver-mais" data-id="${post.id}">Ver mais comentários</button>`
             }
+
+            // Verifica se o usuário logado é o administrador (ID = 1)
+            const isAdmin = usuario && usuario.id === 1
+
+            const botoesAcoes = `
+                <button id="curtir-btn-${post.id}" class="curtir-btn">❤️ ${post.curtidas}</button>
+                <button class="comentar-btn">💬 ${post.comentarios}</button>
+                ${isAdmin ? `<button class="excluir-btn" data-id="${post.id}">🗑️ Excluir</button>` : ''}
+            `
+
             const postDiv = document.createElement('div')
             postDiv.className = 'post'
             postDiv.id = `post-${post.id}`
@@ -206,13 +248,14 @@ async function carregarFeed() {
                 </div>
                 <div class="post-conteudo">${post.conteudo}</div>
                 <div class="post-acoes">
-                    <button id="curtir-btn-${post.id}" class="curtir-btn">❤️ ${post.curtidas}</button>
-                    <button class="comentar-btn">💬 ${post.comentarios}</button>
+                    ${botoesAcoes}
                 </div>
                 <div class="comentarios-area" id="comentarios-${post.id}">${comentariosHTML}</div>
             `
             feed.appendChild(postDiv)
         }
+
+        // Adiciona event listeners
         for (const post of posts) {
             const curtirBtn = document.getElementById(`curtir-btn-${post.id}`)
             if (curtirBtn) {
@@ -222,6 +265,7 @@ async function carregarFeed() {
                     curtirPost(post.id)
                 })
             }
+
             const comentarBtn = document.querySelector(`#post-${post.id} .comentar-btn`)
             if (comentarBtn) {
                 comentarBtn.addEventListener('click', (e) => {
@@ -230,12 +274,22 @@ async function carregarFeed() {
                     abrirComentarios(post.id)
                 })
             }
+
             const verMaisBtn = document.querySelector(`#post-${post.id} .ver-mais`)
             if (verMaisBtn) {
                 verMaisBtn.addEventListener('click', (e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     verMaisComentarios(post.id)
+                })
+            }
+
+            const excluirBtn = document.querySelector(`#post-${post.id} .excluir-btn`)
+            if (excluirBtn) {
+                excluirBtn.addEventListener('click', (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    excluirPost(post.id)
                 })
             }
         }
@@ -311,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 })
 
-// ========== LOGIN (corrigido) ==========
+// ========== LOGIN ==========
 const loginForm = document.getElementById("loginForm")
 if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {
@@ -344,7 +398,7 @@ if (loginForm) {
     })
 }
 
-// ========== CADASTRO (corrigido) ==========
+// ========== CADASTRO ==========
 const registerForm = document.getElementById("registerForm")
 if (registerForm) {
     registerForm.addEventListener("submit", async (e) => {

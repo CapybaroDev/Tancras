@@ -7,8 +7,6 @@ import os
 import logging
 import sys
 
-print(os.getenv("URL_DB"))
-
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -124,7 +122,7 @@ def criar_tabelas():
 
     except Exception as e:
         logger.error(f"Erro ao criar tabelas: {e}")
-        raise  # Reproga a exceção para que o programa seja interrompido
+        raise
     finally:
         if cur:
             cur.close()
@@ -315,7 +313,7 @@ def listar_posts():
 
 
 # =========================
-# DELETAR POST
+# DELETAR POST (com verificação de permissão)
 # =========================
 
 @app.route("/posts/<int:id>", methods=["DELETE"])
@@ -323,17 +321,30 @@ def deletar_post(id):
     conn = None
     cur = None
     try:
+        # Recebe o usuario_id do corpo da requisição
+        dados = request.get_json()
+        if not dados or "usuario_id" not in dados:
+            return jsonify({"erro": "usuario_id é obrigatório"}), 400
+
+        usuario_id = dados.get("usuario_id")
+
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Busca o post
         cur.execute("SELECT usuario_id FROM posts WHERE id = %s", (id,))
         post = cur.fetchone()
 
         if not post:
             return jsonify({"erro": "post não encontrado"}), 404
 
-        usuario_id = post["usuario_id"]
+        # Verifica se o usuário é o dono do post OU é o admin (ID = 1)
+        if post["usuario_id"] != usuario_id and usuario_id != 1:
+            return jsonify({"erro": "você não tem permissão para excluir este post"}), 403
+
+        # Deleta o post
         cur.execute("DELETE FROM posts WHERE id = %s", (id,))
-        cur.execute("UPDATE usuario SET postagens = postagens - 1 WHERE id = %s AND postagens > 0", (usuario_id,))
+        cur.execute("UPDATE usuario SET postagens = postagens - 1 WHERE id = %s AND postagens > 0", (post["usuario_id"],))
         conn.commit()
 
         return jsonify({"mensagem": "post deletado"})
