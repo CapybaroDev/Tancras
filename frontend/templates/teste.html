@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tancras - Versão Teste</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        body {
+            background: #0f0f0f;
+            color: white;
+        }
+        header {
+            background: #1a1a1a;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #2f2f2f;
+            position: sticky;
+            top: 0;
+        }
+        header h1 { color: #00ff88; }
+        main {
+            max-width: 700px;
+            margin: auto;
+            padding: 20px;
+        }
+        .criar-post {
+            background: #1a1a1a;
+            border: 1px solid #2f2f2f;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: #262626;
+            color: white;
+            resize: none;
+            height: 100px;
+        }
+        button {
+            border: none;
+            background: #00ff88;
+            color: black;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .post {
+            background: #1a1a1a;
+            border: 1px solid #2f2f2f;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .post-topo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        .foto {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #00ff88;
+        }
+        .post-nome { font-weight: bold; }
+        .post-usuario { color: gray; font-size: 14px; }
+        .post-conteudo { margin-bottom: 15px; line-height: 1.5; }
+        .post-acoes { display: flex; gap: 20px; }
+        .post-acoes button { background: #262626; color: white; margin: 0; }
+        .comentarios-area { margin-top: 15px; }
+        .comentario {
+            background: #222;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .comentario-usuario { color: #00ff88; font-weight: bold; }
+        .ver-mais {
+            background: transparent;
+            color: #00ff88;
+            border: 1px solid #00ff88;
+            margin-top: 5px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+            position: relative;
+        }
+        .fechar {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            background: #262626;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Tancras</h1>
+    <div class="header-right">
+        <button id="perfilBtn" style="background:#262626;color:white;">Perfil</button>
+        <button id="logoutBtn" style="background:#262626;color:white;">Sair</button>
+    </div>
+</header>
+
+<main>
+    <div class="criar-post">
+        <textarea id="conteudoPost" placeholder="O que está acontecendo?"></textarea>
+        <button id="postarBtn">Postar</button>
+    </div>
+    <div id="feed"></div>
+</main>
+
+<div class="modal" id="modalPerfil">
+    <div class="modal-content">
+        <button class="fechar" id="fecharPerfilBtn">X</button>
+        <div id="perfilConteudo"></div>
+    </div>
+</div>
+
+<script>
+    const API = "http://127.0.0.1:5000"
+    let usuario = null
+
+    // Carregar usuário do localStorage
+    try {
+        usuario = JSON.parse(localStorage.getItem("usuario"))
+    } catch(e) {
+        usuario = null
+    }
+
+    // ========== FUNÇÕES PRINCIPAIS ==========
+    
+    // Curtir post (NÃO recarrega)
+    async function curtirPost(id) {
+        if(!usuario) {
+            alert("Faça login")
+            return
+        }
+        
+        try {
+            const resposta = await fetch(`${API}/posts/${id}/curtir`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ usuario_id: usuario.id })
+            })
+            const dados = await resposta.json()
+            
+            const botao = document.getElementById(`curtir-btn-${id}`)
+            if(botao) {
+                botao.innerHTML = `❤️ ${dados.curtidas}`
+                if(dados.curtido) {
+                    botao.style.background = "#00ff88"
+                    botao.style.color = "black"
+                } else {
+                    botao.style.background = "#262626"
+                    botao.style.color = "white"
+                }
+            }
+        } catch(error) {
+            console.error("Erro:", error)
+        }
+    }
+
+    // Abrir comentário
+    function abrirComentarios(id) {
+        const texto = prompt("Digite seu comentário:")
+        if(texto && texto.trim()) {
+            comentarPost(id, texto.trim())
+        }
+    }
+
+    // Comentar (NÃO recarrega)
+    async function comentarPost(id, conteudo) {
+        if(!usuario) {
+            alert("Faça login")
+            return
+        }
+        
+        try {
+            const resposta = await fetch(`${API}/posts/${id}/comentarios`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ usuario_id: usuario.id, conteudo })
+            })
+            const dados = await resposta.json()
+            
+            // Recarregar só os comentários deste post
+            await carregarComentarios(id)
+            
+            // Atualizar contador
+            const postDiv = document.getElementById(`post-${id}`)
+            if(postDiv && dados.comentarios) {
+                const botao = postDiv.querySelector('.comentar-btn')
+                if(botao) botao.innerHTML = `💬 ${dados.comentarios}`
+            }
+        } catch(error) {
+            console.error("Erro:", error)
+        }
+    }
+
+    // Carregar comentários de um post
+    async function carregarComentarios(id) {
+        try {
+            const resposta = await fetch(`${API}/posts/${id}/comentarios`)
+            const comentarios = await resposta.json()
+            const area = document.getElementById(`comentarios-${id}`)
+            if(!area) return
+            
+            const recentes = comentarios.slice(0, 3)
+            area.innerHTML = ""
+            
+            recentes.forEach(c => {
+                area.innerHTML += `
+                    <div class="comentario">
+                        <span class="comentario-usuario">@${c.usuario}</span>
+                        <span class="comentario-texto">${c.conteudo}</span>
+                    </div>
+                `
+            })
+            
+            if(comentarios.length > 3) {
+                area.innerHTML += `<button class="ver-mais" onclick="verMaisComentarios(${id})">Ver mais comentários</button>`
+            }
+        } catch(error) {
+            console.error("Erro:", error)
+        }
+    }
+
+    // Ver mais comentários
+    window.verMaisComentarios = async function(id) {
+        try {
+            const resposta = await fetch(`${API}/posts/${id}/comentarios`)
+            const comentarios = await resposta.json()
+            const area = document.getElementById(`comentarios-${id}`)
+            if(!area) return
+            
+            area.innerHTML = ""
+            comentarios.forEach(c => {
+                area.innerHTML += `
+                    <div class="comentario">
+                        <span class="comentario-usuario">@${c.usuario}</span>
+                        <span class="comentario-texto">${c.conteudo}</span>
+                    </div>
+                `
+            })
+        } catch(error) {
+            console.error("Erro:", error)
+        }
+    }
+
+    // Carregar feed
+    async function carregarFeed() {
+        const feed = document.getElementById("feed")
+        if(!feed) return
+        
+        feed.innerHTML = '<div style="text-align:center;padding:20px;">Carregando...</div>'
+        
+        try {
+            const resposta = await fetch(`${API}/feed`)
+            const posts = await resposta.json()
+            
+            feed.innerHTML = ""
+            
+            for(const post of posts) {
+                // Buscar comentários
+                let comentarios = []
+                try {
+                    const resComent = await fetch(`${API}/posts/${post.id}/comentarios`)
+                    comentarios = await resComent.json()
+                } catch(e) {}
+                
+                const tresRecentes = comentarios.slice(0, 3)
+                let comentariosHTML = ""
+                
+                tresRecentes.forEach(c => {
+                    comentariosHTML += `
+                        <div class="comentario">
+                            <span class="comentario-usuario">@${c.usuario}</span>
+                            <span class="comentario-texto">${c.conteudo}</span>
+                        </div>
+                    `
+                })
+                
+                if(comentarios.length > 3) {
+                    comentariosHTML += `<button class="ver-mais" onclick="verMaisComentarios(${post.id})">Ver mais comentários</button>`
+                }
+                
+                feed.innerHTML += `
+                    <div class="post" id="post-${post.id}">
+                        <div class="post-topo">
+                            <div class="foto"></div>
+                            <div>
+                                <div class="post-nome">${post.nome}</div>
+                                <div class="post-usuario">@${post.usuario}</div>
+                            </div>
+                        </div>
+                        <div class="post-conteudo">${post.conteudo}</div>
+                        <div class="post-acoes">
+                            <button id="curtir-btn-${post.id}" class="curtir-btn" style="background:#262626;color:white;">❤️ ${post.curtidas}</button>
+                            <button class="comentar-btn" style="background:#262626;color:white;">💬 ${post.comentarios}</button>
+                        </div>
+                        <div class="comentarios-area" id="comentarios-${post.id}">${comentariosHTML}</div>
+                    </div>
+                `
+            }
+            
+            // Adicionar eventos aos botões
+            for(const post of posts) {
+                const curtirBtn = document.getElementById(`curtir-btn-${post.id}`)
+                if(curtirBtn) {
+                    curtirBtn.onclick = (function(id) {
+                        return function() { curtirPost(id); return false; }
+                    })(post.id)
+                }
+                
+                const comentarBtn = document.querySelector(`#post-${post.id} .comentar-btn`)
+                if(comentarBtn) {
+                    comentarBtn.onclick = (function(id) {
+                        return function() { abrirComentarios(id); return false; }
+                    })(post.id)
+                }
+            }
+            
+        } catch(error) {
+            console.error("Erro:", error)
+            feed.innerHTML = '<div style="text-align:center;padding:20px;color:red;">Erro ao carregar feed. Verifique se o backend está rodando em http://127.0.0.1:5000</div>'
+        }
+    }
+
+    // Criar post
+    async function criarPost() {
+        if(!usuario) {
+            alert("Faça login")
+            return
+        }
+        
+        const textarea = document.getElementById("conteudoPost")
+        const conteudo = textarea.value.trim()
+        
+        if(!conteudo) {
+            alert("Digite algo para postar!")
+            return
+        }
+        
+        try {
+            const resposta = await fetch(`${API}/posts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ usuario_id: usuario.id, conteudo })
+            })
+            
+            if(resposta.ok) {
+                textarea.value = ""
+                await carregarFeed()
+            }
+        } catch(error) {
+            console.error("Erro:", error)
+        }
+    }
+
+    // Perfil
+    function abrirPerfil() {
+        if(!usuario) return
+        const modal = document.getElementById("modalPerfil")
+        const conteudo = document.getElementById("perfilConteudo")
+        modal.style.display = "flex"
+        conteudo.innerHTML = `<h2>${usuario.nome}</h2><p>@${usuario.usuario}</p>`
+    }
+
+    function fecharPerfil() {
+        document.getElementById("modalPerfil").style.display = "none"
+    }
+
+    function logout() {
+        localStorage.removeItem("usuario")
+        window.location.href = "login.html"
+    }
+
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', function() {
+        // Atualizar usuário
+        try {
+            usuario = JSON.parse(localStorage.getItem("usuario"))
+        } catch(e) {
+            usuario = null
+        }
+        
+        if(document.getElementById("feed")) {
+            carregarFeed()
+        }
+        
+        // Botões
+        const postarBtn = document.getElementById("postarBtn")
+        if(postarBtn) postarBtn.onclick = function() { criarPost(); return false; }
+        
+        const perfilBtn = document.getElementById("perfilBtn")
+        if(perfilBtn) perfilBtn.onclick = function() { abrirPerfil(); return false; }
+        
+        const logoutBtn = document.getElementById("logoutBtn")
+        if(logoutBtn) logoutBtn.onclick = function() { logout(); return false; }
+        
+        const fecharBtn = document.getElementById("fecharPerfilBtn")
+        if(fecharBtn) fecharBtn.onclick = function() { fecharPerfil(); return false; }
+    })
+</script>
+
+</body>
+</html>

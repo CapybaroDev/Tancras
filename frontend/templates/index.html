@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tancras</title>
+    <link rel="stylesheet" href="/frontend/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Tancras</h1>
+        <div class="header-right">
+            <button type="button" id="perfilBtn">Perfil</button>
+            <button type="button" id="logoutBtn">Sair</button>
+        </div>
+    </header>
+    <main>
+        <div class="criar-post">
+            <textarea id="conteudoPost" placeholder="O que está acontecendo?"></textarea>
+            <button type="button" id="postarBtn">Postar</button>
+        </div>
+        <div id="feed"></div>
+    </main>
+    <div class="modal" id="modalPerfil">
+        <div class="modal-content">
+            <button type="button" class="fechar" id="fecharPerfilBtn">X</button>
+            <div id="perfilConteudo"></div>
+        </div>
+    </div>
+    <script src="/frontend/static/script.js"></script>
+</body>
+</html>

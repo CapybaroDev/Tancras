@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro - Tancras</title>
+
+    <link rel="stylesheet" href="/frontend/static/style.css">
+</head>
+<body>
+
+    <div class="auth-container">
+
+        <form class="auth-card" id="registerForm">
+
+            <h1>Tancras</h1>
+
+            <p>
+                Crie sua conta
+            </p>
+
+            <input type="text" id="registerNome" placeholder="Nome" required>
+            <input type="text" id="registerUsuario" placeholder="@usuario" required>
+            <input type="email" id="registerEmail" placeholder="Email" required>
+            <input type="password" id="registerSenha" placeholder="Senha" required>
+
+            <button type="submit" id="cadastro">
+                Criar conta
+            </button>
+
+            <div id="registerResposta"></div>
+
+            <a href="login.html">
+                Já possui conta?
+            </a>
+
+        </form>
+
+    </div>
+
+    <script src="/frontend/static/script.js"></script>
+
+</body>
+</html>
