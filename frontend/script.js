@@ -1,6 +1,56 @@
 const API = "https://tancras.onrender.com"
 let usuario = null
 
+// ========== TELA DE CARREGAMENTO (somente login/cadastro) ==========
+let requisicoesAtivas = 0
+
+function mostrarCarregamento() {
+    requisicoesAtivas++
+    let overlay = document.getElementById("loadingOverlay")
+    if (!overlay) {
+        overlay = document.createElement("div")
+        overlay.id = "loadingOverlay"
+        overlay.style.position = "fixed"
+        overlay.style.top = "0"
+        overlay.style.left = "0"
+        overlay.style.width = "100%"
+        overlay.style.height = "100%"
+        overlay.style.backgroundColor = "rgba(0,0,0,0.85)"
+        overlay.style.display = "flex"
+        overlay.style.alignItems = "center"
+        overlay.style.justifyContent = "center"
+        overlay.style.zIndex = "9999"
+        overlay.style.flexDirection = "column"
+        overlay.innerHTML = `
+            <div style="color:white; font-size:24px; font-weight:bold; margin-bottom:20px;">⏳ Carregando...</div>
+            <div style="width:50px; height:50px; border:5px solid #333; border-top:5px solid #00ff88; border-radius:50%; animation: spin 1s linear infinite;"></div>
+        `
+        // Adiciona keyframes se não existirem
+        if (!document.querySelector("#loadingStyles")) {
+            const style = document.createElement("style")
+            style.id = "loadingStyles"
+            style.textContent = `
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `
+            document.head.appendChild(style)
+        }
+        document.body.appendChild(overlay)
+    }
+    overlay.style.display = "flex"
+}
+
+function esconderCarregamento() {
+    requisicoesAtivas--
+    if (requisicoesAtivas <= 0) {
+        requisicoesAtivas = 0
+        const overlay = document.getElementById("loadingOverlay")
+        if (overlay) overlay.style.display = "none"
+    }
+}
+
 try {
     const stored = localStorage.getItem("usuario")
     if (stored && stored !== "null") {
@@ -165,7 +215,7 @@ async function criarPost() {
     }
 }
 
-// ========== EXCLUIR POST ==========
+// ========== EXCLUIR POST (dono ou admin) ==========
 async function excluirPost(id) {
     const confirmar = confirm("Tem certeza que deseja excluir este post?")
     if (!confirmar) return
@@ -183,7 +233,6 @@ async function excluirPost(id) {
         })
 
         if (resp.ok) {
-            // Remove o elemento do post do DOM
             const postElement = document.getElementById(`post-${id}`)
             if (postElement) postElement.remove()
             alert("Post excluído com sucesso!")
@@ -226,13 +275,13 @@ async function carregarFeed() {
                 comentariosHTML += `<button class="ver-mais" data-id="${post.id}">Ver mais comentários</button>`
             }
 
-            // Verifica se o usuário logado é o administrador (ID = 1)
-            const isAdmin = usuario && usuario.id === 1
+            // Verifica se o usuário logado é o dono do post OU admin (ID=1)
+            const podeExcluir = usuario && (usuario.id === post.usuario_id || usuario.id === 1)
 
             const botoesAcoes = `
                 <button id="curtir-btn-${post.id}" class="curtir-btn">❤️ ${post.curtidas}</button>
                 <button class="comentar-btn">💬 ${post.comentarios}</button>
-                ${isAdmin ? `<button class="excluir-btn" data-id="${post.id}">🗑️ Excluir</button>` : ''}
+                ${podeExcluir ? `<button class="excluir-btn" data-id="${post.id}">🗑️ Excluir</button>` : ''}
             `
 
             const postDiv = document.createElement('div')
@@ -365,7 +414,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 })
 
-// ========== LOGIN ==========
+// ========== LOGIN (COM TELA DE CARREGAMENTO) ==========
 const loginForm = document.getElementById("loginForm")
 if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {
@@ -376,6 +425,7 @@ if (loginForm) {
             alert("Preencha todos os campos")
             return
         }
+        mostrarCarregamento()
         try {
             const resp = await fetch(`${API}/auth/login`, {
                 method: "POST",
@@ -394,11 +444,13 @@ if (loginForm) {
         } catch (e) {
             console.error("Erro no login:", e)
             alert("Erro ao conectar com o servidor")
+        } finally {
+            esconderCarregamento()
         }
     })
 }
 
-// ========== CADASTRO ==========
+// ========== CADASTRO (COM TELA DE CARREGAMENTO) ==========
 const registerForm = document.getElementById("registerForm")
 if (registerForm) {
     registerForm.addEventListener("submit", async (e) => {
@@ -411,6 +463,7 @@ if (registerForm) {
             alert("Preencha todos os campos")
             return
         }
+        mostrarCarregamento()
         try {
             const resp = await fetch(`${API}/auth/register`, {
                 method: "POST",
@@ -427,6 +480,8 @@ if (registerForm) {
         } catch (e) {
             console.error("Erro no cadastro:", e)
             alert("Erro ao conectar com o servidor")
+        } finally {
+            esconderCarregamento()
         }
     })
 }
