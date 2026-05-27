@@ -10,6 +10,11 @@ try {
     usuario = null
 }
 
+// Verifica login
+if (!usuario && !window.location.pathname.includes("login.html")) {
+    window.location.href = "login.html"
+}
+
 console.log("Usuário logado:", usuario)
 
 // ========== FUNÇÕES DE API ==========
