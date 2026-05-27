@@ -320,7 +320,7 @@ if (loginForm) {
             localStorage.setItem("usuario", JSON.stringify(dados.usuario))
             usuario = dados.usuario
             alert("Login realizado com sucesso")
-            window.location.href = "/templates/index.html"
+            window.location.href = "index.html"
         } catch (e) {
             console.error("Erro no login:", e)
             alert("Erro ao conectar com o servidor")
@@ -353,7 +353,7 @@ if (registerForm) {
                 return
             }
             alert("Conta criada com sucesso")
-            window.location.href = "/templates/login.html"
+            window.location.href = "login.html"
         } catch (e) {
             console.error("Erro no cadastro:", e)
             alert("Erro ao conectar com o servidor")
