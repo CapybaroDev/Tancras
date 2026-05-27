@@ -11,7 +11,18 @@ try {
 }
 
 // Verifica login
-if (!usuario && !window.location.pathname.includes("login.html")) {
+const paginaAtual = window.location.pathname
+
+const paginasPublicas = [
+    "login.html",
+    "cadastro.html"
+]
+
+const paginaLiberada = paginasPublicas.some(pagina =>
+    paginaAtual.includes(pagina)
+)
+
+if (!usuario && !paginaLiberada) {
     window.location.href = "login.html"
 }
 
