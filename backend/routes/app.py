@@ -1,22 +1,43 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import bcrypt
+import os
+import logging
+import sys
+
+print(os.getenv("URL_DB"))
+
+# Configuração de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
 CORS(app)
 
 # =========================
-# CONEXÃO
+# CONFIGURAÇÕES
+# =========================
+
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+DB_SSLMODE = os.getenv("DB_SSLMODE", "require")
+
+# =========================
+# CONEXÃO COM POSTGRESQL
 # =========================
 
 def conectar():
+    url = os.getenv("URL_DB")
+    if not url:
+        raise Exception("URL_DB não definida")
 
-    conn = sqlite3.connect("banco.db")
-    conn.row_factory = sqlite3.Row
+    # Adiciona sslmode se não estiver na URL
+    if "sslmode=" not in url:
+        separator = "&" if "?" in url else "?"
+        url += f"{separator}sslmode={DB_SSLMODE}"
 
-    return conn
+    return psycopg2.connect(url)
 
 
 # =========================
@@ -24,128 +45,201 @@ def conectar():
 # =========================
 
 def gerar_hash(senha):
+    return bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
 
-    return bcrypt.hashpw(
-        senha.encode(),
-        bcrypt.gensalt()
-    ).decode()
-
-
-def verificar_senha(senha, hash):
-
-    return bcrypt.checkpw(
-        senha.encode(),
-        hash.encode()
-    )
+def verificar_senha(senha, hash_senha):
+    return bcrypt.checkpw(senha.encode(), hash_senha.encode())
 
 
 # =========================
-# AUTH REGISTER
+# CRIAR TABELAS
+# =========================
+
+def criar_tabelas():
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS usuario (
+                id SERIAL PRIMARY KEY,
+                nome VARCHAR(100) NOT NULL,
+                usuario VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(100) UNIQUE NOT NULL,
+                senha TEXT NOT NULL,
+                bio TEXT,
+                foto_perfil TEXT,
+                banner TEXT,
+                seguidores INTEGER DEFAULT 0,
+                seguindo INTEGER DEFAULT 0,
+                postagens INTEGER DEFAULT 0,
+                verificado BOOLEAN DEFAULT FALSE,
+                data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                conteudo TEXT NOT NULL,
+                imagem TEXT,
+                curtidas INTEGER DEFAULT 0,
+                comentarios INTEGER DEFAULT 0,
+                reposts INTEGER DEFAULT 0,
+                data_post TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS curtidas (
+                usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                PRIMARY KEY (usuario_id, post_id)
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS comentarios (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                conteudo TEXT NOT NULL,
+                data_comentario TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS seguidores (
+                seguidor_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                seguindo_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                PRIMARY KEY (seguidor_id, seguindo_id)
+            );
+        """)
+
+        conn.commit()
+        logger.info("Banco conectado e tabelas criadas/verificadas.")
+
+    except Exception as e:
+        logger.error(f"Erro ao criar tabelas: {e}")
+        raise  # Reproga a exceção para que o programa seja interrompido
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+# =========================
+# AUXILIAR DE RESPOSTA DE ERRO
+# =========================
+
+def erro_resposta(mensagem_publico, erro_interno=None, status=500):
+    if DEBUG and erro_interno:
+        logger.error(erro_interno)
+        return jsonify({"erro": mensagem_publico, "detalhe": str(erro_interno)}), status
+    else:
+        if erro_interno:
+            logger.error(erro_interno)
+        return jsonify({"erro": mensagem_publico}), status
+
+
+# =========================
+# REGISTER
 # =========================
 
 @app.route("/auth/register", methods=["POST"])
 def register():
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        nome = dados.get("nome")
+        usuario = dados.get("usuario")
+        email = dados.get("email")
+        senha = dados.get("senha")
 
-    nome = dados["nome"]
-    usuario = dados["usuario"]
-    email = dados["email"]
-    senha = dados["senha"]
+        if not nome or not usuario or not email or not senha:
+            return jsonify({"erro": "todos os campos são obrigatórios"}), 400
 
-    conn = conectar()
-    cursor = conn.cursor()
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute(
-        "SELECT * FROM usuario WHERE email = ?",
-        (email,)
-    )
+        cur.execute("SELECT id FROM usuario WHERE email = %s OR usuario = %s", (email, usuario))
+        if cur.fetchone():
+            return jsonify({"erro": "email ou usuário já cadastrado"}), 400
 
-    usuario_existente = cursor.fetchone()
+        senha_hash = gerar_hash(senha)
+        cur.execute("""
+            INSERT INTO usuario (nome, usuario, email, senha)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (nome, usuario, email, senha_hash))
+        novo_usuario = cur.fetchone()
+        conn.commit()
 
-    if usuario_existente:
+        return jsonify({"mensagem": "usuário criado", "usuario_id": novo_usuario["id"]}), 201
 
-        conn.close()
-
-        return jsonify({
-            "erro": "email já cadastrado"
-        }), 400
-
-    senha_hash = gerar_hash(senha)
-
-    cursor.execute("""
-        INSERT INTO usuario (
-            nome,
-            usuario,
-            email,
-            senha
-        )
-        VALUES (?, ?, ?, ?)
-    """, (
-        nome,
-        usuario,
-        email,
-        senha_hash
-    ))
-
-    conn.commit()
-
-    conn.close()
-
-    return jsonify({
-        "mensagem": "usuário criado"
-    }), 201
+    except Exception as e:
+        return erro_resposta("Erro interno ao registrar usuário", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
-# AUTH LOGIN
+# LOGIN
 # =========================
 
 @app.route("/auth/login", methods=["POST"])
 def login():
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        email = dados.get("email")
+        senha = dados.get("senha")
 
-    email = dados["email"]
-    senha = dados["senha"]
+        if not email or not senha:
+            return jsonify({"erro": "email e senha obrigatórios"}), 400
 
-    conn = conectar()
-    cursor = conn.cursor()
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, nome, usuario, senha FROM usuario WHERE email = %s", (email,))
+        usuario = cur.fetchone()
 
-    cursor.execute(
-        "SELECT * FROM usuario WHERE email = ?",
-        (email,)
-    )
+        if not usuario:
+            return jsonify({"erro": "usuário não encontrado"}), 404
 
-    usuario = cursor.fetchone()
-
-    conn.close()
-
-    if not usuario:
-
-        return jsonify({
-            "erro": "usuário não encontrado"
-        }), 404
-
-    senha_correta = verificar_senha(
-        senha,
-        usuario["senha"]
-    )
-
-    if not senha_correta:
+        if not verificar_senha(senha, usuario["senha"]):
+            return jsonify({"erro": "senha incorreta"}), 401
 
         return jsonify({
-            "erro": "senha incorreta"
-        }), 401
+            "mensagem": "login realizado",
+            "usuario": {
+                "id": usuario["id"],
+                "nome": usuario["nome"],
+                "usuario": usuario["usuario"]
+            }
+        })
 
-    return jsonify({
-        "mensagem": "login realizado",
-        "usuario": {
-            "id": usuario["id"],
-            "nome": usuario["nome"],
-            "usuario": usuario["usuario"]
-        }
-    })
+    except Exception as e:
+        return erro_resposta("Erro interno ao fazer login", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -154,39 +248,37 @@ def login():
 
 @app.route("/posts", methods=["POST"])
 def criar_post():
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        usuario_id = dados.get("usuario_id")
+        conteudo = dados.get("conteudo")
 
-    usuario_id = dados["usuario_id"]
-    conteudo = dados["conteudo"]
+        if not usuario_id or not conteudo:
+            return jsonify({"erro": "dados inválidos"}), 400
 
-    conn = conectar()
-    cursor = conn.cursor()
+        if not isinstance(conteudo, str) or not conteudo.strip():
+            return jsonify({"erro": "conteúdo inválido ou vazio"}), 400
 
-    cursor.execute("""
-        INSERT INTO posts (
-            usuario_id,
-            conteudo
-        )
-        VALUES (?, ?)
-    """, (
-        usuario_id,
-        conteudo
-    ))
+        conn = conectar()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO posts (usuario_id, conteudo) VALUES (%s, %s)", (usuario_id, conteudo))
+        cur.execute("UPDATE usuario SET postagens = postagens + 1 WHERE id = %s", (usuario_id,))
+        conn.commit()
 
-    cursor.execute("""
-        UPDATE usuario
-        SET postagens = postagens + 1
-        WHERE id = ?
-    """, (usuario_id,))
+        return jsonify({"mensagem": "post criado"}), 201
 
-    conn.commit()
-
-    conn.close()
-
-    return jsonify({
-        "mensagem": "post criado"
-    }), 201
+    except Exception as e:
+        return erro_resposta("Erro interno ao criar post", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -195,31 +287,31 @@ def criar_post():
 
 @app.route("/posts", methods=["GET"])
 def listar_posts():
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                posts.*,
+                usuario.nome,
+                usuario.usuario,
+                usuario.foto_perfil
+            FROM posts
+            JOIN usuario ON posts.usuario_id = usuario.id
+            ORDER BY posts.id DESC
+        """)
+        posts = cur.fetchall()
+        return jsonify(posts)
 
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT
-            posts.*,
-            usuario.nome,
-            usuario.usuario
-        FROM posts
-
-        JOIN usuario
-        ON posts.usuario_id = usuario.id
-
-        ORDER BY posts.id DESC
-    """)
-
-    posts = [
-        dict(post)
-        for post in cursor.fetchall()
-    ]
-
-    conn.close()
-
-    return jsonify(posts)
+    except Exception as e:
+        return erro_resposta("Erro interno ao listar posts", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -228,47 +320,31 @@ def listar_posts():
 
 @app.route("/posts/<int:id>", methods=["DELETE"])
 def deletar_post(id):
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT usuario_id FROM posts WHERE id = %s", (id,))
+        post = cur.fetchone()
 
-    conn = conectar()
-    cursor = conn.cursor()
+        if not post:
+            return jsonify({"erro": "post não encontrado"}), 404
 
-    cursor.execute("""
-        SELECT usuario_id
-        FROM posts
-        WHERE id = ?
-    """, (id,))
+        usuario_id = post["usuario_id"]
+        cur.execute("DELETE FROM posts WHERE id = %s", (id,))
+        cur.execute("UPDATE usuario SET postagens = postagens - 1 WHERE id = %s AND postagens > 0", (usuario_id,))
+        conn.commit()
 
-    post = cursor.fetchone()
+        return jsonify({"mensagem": "post deletado"})
 
-    if not post:
-
-        conn.close()
-
-        return jsonify({
-            "erro": "post não encontrado"
-        }), 404
-
-    usuario_id = post["usuario_id"]
-
-    cursor.execute("""
-        DELETE FROM posts
-        WHERE id = ?
-    """, (id,))
-
-    cursor.execute("""
-        UPDATE usuario
-        SET postagens = postagens - 1
-        WHERE id = ?
-        AND postagens > 0
-    """, (usuario_id,))
-
-    conn.commit()
-
-    conn.close()
-
-    return jsonify({
-        "mensagem": "post deletado"
-    })
+    except Exception as e:
+        return erro_resposta("Erro interno ao deletar post", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -277,100 +353,45 @@ def deletar_post(id):
 
 @app.route("/posts/<int:id>/curtir", methods=["POST"])
 def curtir_post(id):
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        usuario_id = dados.get("usuario_id")
+        if not usuario_id:
+            return jsonify({"erro": "usuário inválido"}), 400
 
-    usuario_id = dados["usuario_id"]
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    conn = conectar()
-    cursor = conn.cursor()
+        cur.execute("SELECT * FROM curtidas WHERE usuario_id = %s AND post_id = %s", (usuario_id, id))
+        curtida = cur.fetchone()
 
-    cursor.execute("""
-        SELECT *
-        FROM curtidas
-        WHERE usuario_id = ?
-        AND post_id = ?
-    """, (
-        usuario_id,
-        id
-    ))
-
-    curtida_existente = cursor.fetchone()
-
-    # DESCURTIR
-
-    if curtida_existente:
-
-        cursor.execute("""
-            DELETE FROM curtidas
-            WHERE usuario_id = ?
-            AND post_id = ?
-        """, (
-            usuario_id,
-            id
-        ))
-
-        cursor.execute("""
-            UPDATE posts
-            SET curtidas = curtidas - 1
-            WHERE id = ?
-            AND curtidas > 0
-        """, (id,))
+        if curtida:
+            cur.execute("DELETE FROM curtidas WHERE usuario_id = %s AND post_id = %s", (usuario_id, id))
+            cur.execute("UPDATE posts SET curtidas = curtidas - 1 WHERE id = %s AND curtidas > 0", (id,))
+            curtido = False
+        else:
+            cur.execute("INSERT INTO curtidas (usuario_id, post_id) VALUES (%s, %s)", (usuario_id, id))
+            cur.execute("UPDATE posts SET curtidas = curtidas + 1 WHERE id = %s", (id,))
+            curtido = True
 
         conn.commit()
+        cur.execute("SELECT curtidas FROM posts WHERE id = %s", (id,))
+        total = cur.fetchone()["curtidas"]
 
-        cursor.execute("""
-            SELECT curtidas
-            FROM posts
-            WHERE id = ?
-        """, (id,))
+        return jsonify({"curtido": curtido, "curtidas": total})
 
-        total = cursor.fetchone()["curtidas"]
-
-        conn.close()
-
-        return jsonify({
-            "mensagem": "curtida removida",
-            "curtido": False,
-            "curtidas": total
-        })
-
-    # CURTIR
-
-    cursor.execute("""
-        INSERT INTO curtidas (
-            usuario_id,
-            post_id
-        )
-        VALUES (?, ?)
-    """, (
-        usuario_id,
-        id
-    ))
-
-    cursor.execute("""
-        UPDATE posts
-        SET curtidas = curtidas + 1
-        WHERE id = ?
-    """, (id,))
-
-    conn.commit()
-
-    cursor.execute("""
-        SELECT curtidas
-        FROM posts
-        WHERE id = ?
-    """, (id,))
-
-    total = cursor.fetchone()["curtidas"]
-
-    conn.close()
-
-    return jsonify({
-        "mensagem": "post curtido",
-        "curtido": True,
-        "curtidas": total
-    })
+    except Exception as e:
+        return erro_resposta("Erro interno ao curtir/descurtir", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -379,50 +400,37 @@ def curtir_post(id):
 
 @app.route("/posts/<int:id>/comentarios", methods=["POST"])
 def comentar(id):
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        usuario_id = dados.get("usuario_id")
+        conteudo = dados.get("conteudo")
 
-    usuario_id = dados["usuario_id"]
-    conteudo = dados["conteudo"]
+        if not usuario_id or not conteudo:
+            return jsonify({"erro": "dados inválidos"}), 400
 
-    conn = conectar()
-    cursor = conn.cursor()
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("INSERT INTO comentarios (usuario_id, post_id, conteudo) VALUES (%s, %s, %s)",
+                    (usuario_id, id, conteudo))
+        cur.execute("UPDATE posts SET comentarios = comentarios + 1 WHERE id = %s", (id,))
+        conn.commit()
+        cur.execute("SELECT comentarios FROM posts WHERE id = %s", (id,))
+        total = cur.fetchone()["comentarios"]
 
-    cursor.execute("""
-        INSERT INTO comentarios (
-            usuario_id,
-            post_id,
-            conteudo
-        )
-        VALUES (?, ?, ?)
-    """, (
-        usuario_id,
-        id,
-        conteudo
-    ))
+        return jsonify({"mensagem": "comentário criado", "comentarios": total})
 
-    cursor.execute("""
-        UPDATE posts
-        SET comentarios = comentarios + 1
-        WHERE id = ?
-    """, (id,))
-
-    conn.commit()
-
-    cursor.execute("""
-        SELECT comentarios
-        FROM posts
-        WHERE id = ?
-    """, (id,))
-
-    total = cursor.fetchone()["comentarios"]
-
-    conn.close()
-
-    return jsonify({
-        "mensagem": "comentário criado",
-        "comentarios": total
-    })
+    except Exception as e:
+        return erro_resposta("Erro interno ao comentar", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -431,131 +439,81 @@ def comentar(id):
 
 @app.route("/posts/<int:id>/comentarios", methods=["GET"])
 def listar_comentarios(id):
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                comentarios.id,
+                comentarios.conteudo,
+                comentarios.data_comentario,
+                usuario.usuario
+            FROM comentarios
+            JOIN usuario ON comentarios.usuario_id = usuario.id
+            WHERE comentarios.post_id = %s
+            ORDER BY comentarios.id DESC
+        """, (id,))
+        comentarios = cur.fetchall()
+        return jsonify(comentarios)
 
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT
-            comentarios.id,
-            comentarios.conteudo,
-            comentarios.data_comentario,
-            usuario.usuario
-        FROM comentarios
-
-        JOIN usuario
-        ON comentarios.usuario_id = usuario.id
-
-        WHERE comentarios.post_id = ?
-
-        ORDER BY comentarios.id DESC
-    """, (id,))
-
-    comentarios = [
-        dict(comentario)
-        for comentario in cursor.fetchall()
-    ]
-
-    conn.close()
-
-    return jsonify(comentarios)
+    except Exception as e:
+        return erro_resposta("Erro interno ao listar comentários", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
-# SEGUIR
+# SEGUIR / DESSEGUIR
 # =========================
 
 @app.route("/usuarios/<int:id>/seguir", methods=["POST"])
 def seguir(id):
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", status=400)
 
-    dados = request.json
+        seguidor_id = dados.get("seguidor_id")
+        if not seguidor_id:
+            return jsonify({"erro": "seguidor inválido"}), 400
 
-    seguidor_id = dados["seguidor_id"]
+        if seguidor_id == id:
+            return jsonify({"erro": "você não pode seguir a si mesmo"}), 400
 
-    conn = conectar()
-    cursor = conn.cursor()
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cursor.execute("""
-        SELECT *
-        FROM seguidores
-        WHERE seguidor_id = ?
-        AND seguindo_id = ?
-    """, (
-        seguidor_id,
-        id
-    ))
+        cur.execute("SELECT * FROM seguidores WHERE seguidor_id = %s AND seguindo_id = %s", (seguidor_id, id))
+        seguindo = cur.fetchone()
 
-    seguindo = cursor.fetchone()
-
-    # DEIXAR DE SEGUIR
-
-    if seguindo:
-
-        cursor.execute("""
-            DELETE FROM seguidores
-            WHERE seguidor_id = ?
-            AND seguindo_id = ?
-        """, (
-            seguidor_id,
-            id
-        ))
-
-        cursor.execute("""
-            UPDATE usuario
-            SET seguidores = seguidores - 1
-            WHERE id = ?
-            AND seguidores > 0
-        """, (id,))
-
-        cursor.execute("""
-            UPDATE usuario
-            SET seguindo = seguindo - 1
-            WHERE id = ?
-            AND seguindo > 0
-        """, (seguidor_id,))
+        if seguindo:
+            cur.execute("DELETE FROM seguidores WHERE seguidor_id = %s AND seguindo_id = %s", (seguidor_id, id))
+            cur.execute("UPDATE usuario SET seguidores = seguidores - 1 WHERE id = %s AND seguidores > 0", (id,))
+            cur.execute("UPDATE usuario SET seguindo = seguindo - 1 WHERE id = %s AND seguindo > 0", (seguidor_id,))
+            seguindo_status = False
+        else:
+            cur.execute("INSERT INTO seguidores (seguidor_id, seguindo_id) VALUES (%s, %s)", (seguidor_id, id))
+            cur.execute("UPDATE usuario SET seguidores = seguidores + 1 WHERE id = %s", (id,))
+            cur.execute("UPDATE usuario SET seguindo = seguindo + 1 WHERE id = %s", (seguidor_id,))
+            seguindo_status = True
 
         conn.commit()
+        return jsonify({"seguindo": seguindo_status})
 
-        conn.close()
-
-        return jsonify({
-            "seguindo": False,
-            "mensagem": "usuário desseguido"
-        })
-
-    # SEGUIR
-
-    cursor.execute("""
-        INSERT INTO seguidores (
-            seguidor_id,
-            seguindo_id
-        )
-        VALUES (?, ?)
-    """, (
-        seguidor_id,
-        id
-    ))
-
-    cursor.execute("""
-        UPDATE usuario
-        SET seguidores = seguidores + 1
-        WHERE id = ?
-    """, (id,))
-
-    cursor.execute("""
-        UPDATE usuario
-        SET seguindo = seguindo + 1
-        WHERE id = ?
-    """, (seguidor_id,))
-
-    conn.commit()
-
-    conn.close()
-
-    return jsonify({
-        "seguindo": True,
-        "mensagem": "usuário seguido"
-    })
+    except Exception as e:
+        return erro_resposta("Erro interno ao seguir/desseguir", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -564,41 +522,38 @@ def seguir(id):
 
 @app.route("/feed", methods=["GET"])
 def feed():
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                posts.id,
+                posts.usuario_id,
+                posts.conteudo,
+                posts.imagem,
+                posts.curtidas,
+                posts.comentarios,
+                posts.reposts,
+                posts.data_post,
+                usuario.nome,
+                usuario.usuario,
+                usuario.foto_perfil
+            FROM posts
+            JOIN usuario ON posts.usuario_id = usuario.id
+            ORDER BY posts.id DESC
+        """)
+        posts = cur.fetchall()
+        return jsonify(posts)
 
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT
-            posts.id,
-            posts.usuario_id,
-            posts.conteudo,
-            posts.imagem,
-            posts.curtidas,
-            posts.comentarios,
-            posts.reposts,
-            posts.data_post,
-
-            usuario.nome,
-            usuario.usuario,
-            usuario.foto_perfil
-
-        FROM posts
-
-        JOIN usuario
-        ON posts.usuario_id = usuario.id
-
-        ORDER BY posts.id DESC
-    """)
-
-    posts = [
-        dict(post)
-        for post in cursor.fetchall()
-    ]
-
-    conn.close()
-
-    return jsonify(posts)
+    except Exception as e:
+        return erro_resposta("Erro interno ao carregar feed", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -607,38 +562,32 @@ def feed():
 
 @app.route("/usuarios/<int:id>", methods=["GET"])
 def buscar_usuario(id):
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                id, nome, usuario, bio, foto_perfil, banner,
+                seguidores, seguindo, postagens, verificado, data_criacao
+            FROM usuario
+            WHERE id = %s
+        """, (id,))
+        usuario = cur.fetchone()
 
-    conn = conectar()
-    cursor = conn.cursor()
+        if not usuario:
+            return jsonify({"erro": "usuário não encontrado"}), 404
 
-    cursor.execute("""
-        SELECT
-            id,
-            nome,
-            usuario,
-            bio,
-            foto_perfil,
-            banner,
-            seguidores,
-            seguindo,
-            postagens,
-            verificado,
-            data_criacao
-        FROM usuario
-        WHERE id = ?
-    """, (id,))
+        return jsonify(usuario)
 
-    usuario = cursor.fetchone()
-
-    conn.close()
-
-    if not usuario:
-
-        return jsonify({
-            "erro": "usuário não encontrado"
-        }), 404
-
-    return jsonify(dict(usuario))
+    except Exception as e:
+        return erro_resposta("Erro interno ao buscar usuário", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
@@ -647,38 +596,51 @@ def buscar_usuario(id):
 
 @app.route("/usuarios/<int:id>/posts", methods=["GET"])
 def posts_usuario(id):
+    conn = None
+    cur = None
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT
+                posts.*,
+                usuario.nome,
+                usuario.usuario
+            FROM posts
+            JOIN usuario ON posts.usuario_id = usuario.id
+            WHERE usuario.id = %s
+            ORDER BY posts.id DESC
+        """, (id,))
+        posts = cur.fetchall()
+        return jsonify(posts)
 
-    conn = conectar()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT
-            posts.*,
-            usuario.nome,
-            usuario.usuario
-
-        FROM posts
-
-        JOIN usuario
-        ON posts.usuario_id = usuario.id
-
-        WHERE usuario.id = ?
-
-        ORDER BY posts.id DESC
-    """, (id,))
-
-    posts = [
-        dict(post)
-        for post in cursor.fetchall()
-    ]
-
-    conn.close()
-
-    return jsonify(posts)
+    except Exception as e:
+        return erro_resposta("Erro interno ao listar posts do usuário", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 # =========================
+# HOME
+# =========================
+
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"mensagem": "API funcionando"})
+
+
+# =========================
+# START
+# =========================
 
 if __name__ == "__main__":
+    try:
+        criar_tabelas()
+    except Exception as e:
+        logger.critical("Não foi possível criar as tabelas. Abortando inicialização.")
+        sys.exit(1)
 
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=DEBUG)
