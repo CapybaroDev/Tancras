@@ -13,7 +13,7 @@ CORS(app)
 
 def conectar():
 
-    conn = sqlite3.connect("backend/banco/banco.db")
+    conn = sqlite3.connect("backend/banco.db")
     conn.row_factory = sqlite3.Row
 
     return conn
