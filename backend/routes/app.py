@@ -501,6 +501,45 @@ def posts_usuario(id):
         if cur: cur.close()
         if conn: conn.close()
 
+@app.route("/usuarios/<int:id>", methods=["DELETE"])
+def deletar_usuario(id):
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados or "usuario_id" not in dados:
+            return jsonify({"erro": "usuario_id obrigatório"}), 400
+
+        admin_id = dados.get("usuario_id")
+        # Apenas o admin (id = 1) pode deletar usuários
+        if admin_id != 1:
+            return jsonify({"erro": "Apenas o administrador pode deletar usuários"}), 403
+
+        if id == 1:
+            return jsonify({"erro": "Não é possível deletar o administrador principal"}), 403
+
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Verifica se o usuário existe
+        cur.execute("SELECT id FROM usuario WHERE id = %s", (id,))
+        if not cur.fetchone():
+            return jsonify({"erro": "Usuário não encontrado"}), 404
+
+        # Deleta o usuário (as chaves estrangeiras com ON DELETE CASCADE cuidam do resto)
+        cur.execute("DELETE FROM usuario WHERE id = %s", (id,))
+        conn.commit()
+
+        return jsonify({"mensagem": "Usuário deletado com sucesso"}), 200
+
+    except Exception as e:
+        return erro_resposta("Erro ao deletar usuário", e, 500)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"mensagem": "API funcionando"})

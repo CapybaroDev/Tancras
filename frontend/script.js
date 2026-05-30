@@ -82,7 +82,7 @@ async function seguirUsuario(seguindo_id, botaoElement, isPerfilPage = false) {
     } catch(e) { alert("Erro de conexão") }
 }
 
-// ========== CURTIR, COMENTAR, EXCLUIR ==========
+// ========== CURTIR, COMENTAR, EXCLUIR POST ==========
 async function curtirPost(id) {
     if (!usuario) { alert("Faça login"); return }
     try {
@@ -182,6 +182,38 @@ async function excluirPost(id) {
             alert(erro.erro || "Erro")
         }
     } catch(e) { alert("Erro de conexão") }
+}
+
+// ========== DELETAR USUÁRIO (APENAS ADMIN) ==========
+async function deletarUsuario(userId) {
+    if (!usuario || usuario.id !== 1) {
+        alert("Apenas o administrador pode deletar usuários.");
+        return;
+    }
+    const confirmar = confirm(`Tem certeza que deseja deletar o usuário #${userId}? Esta ação é irreversível.`);
+    if (!confirmar) return;
+
+    try {
+        const resp = await fetch(`${API}/usuarios/${userId}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ usuario_id: usuario.id })
+        });
+        const dados = await resp.json();
+        if (resp.ok) {
+            alert("Usuário deletado com sucesso!");
+            if (window.location.pathname.includes('user.html')) {
+                window.location.href = "index.html";
+            } else {
+                location.reload();
+            }
+        } else {
+            alert(dados.erro || "Erro ao deletar usuário");
+        }
+    } catch (err) {
+        alert("Erro de conexão ao deletar usuário");
+        console.error(err);
+    }
 }
 
 // ========== FEED COM BOTÃO "CARREGAR MAIS" ==========
@@ -374,6 +406,7 @@ if (window.location.pathname.includes('user.html')) {
             if (!resp.ok) throw new Error()
             const user = await resp.json()
             const isOwnProfile = usuario && (usuario.id == userId)
+            const isAdmin = usuario && (usuario.id === 1)          // ADMIN
             const fotoUrl = user.foto_perfil ? `url(${user.foto_perfil})` : "#00ff88"
 
             let html = `
@@ -390,6 +423,12 @@ if (window.location.pathname.includes('user.html')) {
                 const seguindo = user.seguido_por_voce || false
                 html += `<button id="seguirPerfilBtn" class="btn-seguir-perfil ${seguindo ? 'seguindo' : ''}">${seguindo ? '✓ Seguindo' : '+ Seguir'}</button>`
             }
+
+            // Botão deletar usuário (apenas admin, e não pode deletar a si mesmo)
+            if (isAdmin && userId != 1) {
+                html += `<button id="deletarUsuarioBtn" class="btn-deletar-usuario">🗑️ Deletar Usuário</button>`
+            }
+
             html += `</div>`
             document.getElementById('perfilInfo').innerHTML = html
 
@@ -398,6 +437,11 @@ if (window.location.pathname.includes('user.html')) {
             } else if (usuario) {
                 const btn = document.getElementById('seguirPerfilBtn')
                 if (btn) btn.addEventListener('click', () => seguirUsuario(userId, btn, true))
+            }
+
+            const deletarBtn = document.getElementById('deletarUsuarioBtn')
+            if (deletarBtn) {
+                deletarBtn.addEventListener('click', () => deletarUsuario(userId))
             }
 
             const respPosts = await fetch(`${API}/usuarios/${userId}/posts?limit=20`)

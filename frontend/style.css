@@ -384,6 +384,25 @@ main {
     color: black;
 }
 
+/* Botão deletar usuário (admin) */
+.btn-deletar-usuario {
+    background: #ff4444;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 30px;
+    font-weight: bold;
+    cursor: pointer;
+    display: inline-block;
+    margin-top: 10px;
+    transition: 0.2s;
+}
+
+.btn-deletar-usuario:hover {
+    background: #cc0000;
+    transform: scale(1.02);
+}
+
 @keyframes fade {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
