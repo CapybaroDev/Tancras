@@ -9,10 +9,6 @@
 <body>
     <header>
         <h1>Tancras</h1>
-        <div class="header-right">
-            <button type="button" id="perfilBtn">Perfil</button>
-            <button type="button" id="logoutBtn">Sair</button>
-        </div>
     </header>
     <main>
         <div class="criar-post">
@@ -21,12 +17,21 @@
         </div>
         <div id="feed"></div>
     </main>
-    <div class="modal" id="modalPerfil">
+
+    <nav class="bottom-nav">
+        <button id="homeBtn" class="nav-btn active">🏠 Home</button>
+        <button id="perfilNavBtn" class="nav-btn">👤 Perfil</button>
+        <button id="configNavBtn" class="nav-btn">⚙️ Config</button>
+    </nav>
+
+    <div class="modal" id="modalConfig">
         <div class="modal-content">
-            <button type="button" class="fechar" id="fecharPerfilBtn">X</button>
-            <div id="perfilConteudo"></div>
+            <button type="button" class="fechar" id="fecharConfigBtn">X</button>
+            <h2>Configurações</h2>
+            <button id="sairConfigBtn" class="btn-sair">Sair da conta</button>
         </div>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>
