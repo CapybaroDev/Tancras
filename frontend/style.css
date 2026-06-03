@@ -20,15 +20,25 @@ header {
     border-bottom: 1px solid #2f2f2f;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     position: fixed;
     top: 0;
     z-index: 1000;
-    padding: 0 32px;
+    padding: 0 16px;
 }
 
-/* Quando existe o botão "Voltar" (user.html) */
-body:has(.header-right) header {
-    justify-content: space-between;
+/* Link que envolve logo e título */
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.logo-link:hover {
+    opacity: 0.9;
+    cursor: pointer;
 }
 
 .logo {
@@ -48,6 +58,14 @@ header h1 {
     padding: 8px 16px;
     border-radius: 30px;
     font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.header-right button:hover {
+    background: #00ff88;
+    color: black;
+    border-color: black;
 }
 
 /* ========== MAIN ========== */
@@ -95,8 +113,7 @@ main {
 }
 
 /* ========== FORMULÁRIOS ========== */
-input,
-textarea {
+input, textarea {
     width: 100%;
     padding: 14px;
     border: none;
@@ -119,7 +136,7 @@ button {
     border-radius: 12px;
     font-weight: bold;
     cursor: pointer;
-    transition: 0.2s;
+    transition: all 0.2s ease;
 }
 
 a {
@@ -209,16 +226,18 @@ a {
 }
 
 .post-acoes button:hover {
-    transform: scale(1.02);
+    background: #22ff99;
+    transform: scale(0.98);
 }
 
 .excluir-btn {
     background: #ff4444;
     color: white;
 }
-
 .excluir-btn:hover {
     background: #cc0000;
+    filter: brightness(1.1);
+    transform: scale(0.98);
 }
 
 /* ========== COMENTÁRIOS ========== */
@@ -260,7 +279,6 @@ a {
     padding: 10px 14px;
     font-size: 14px;
 }
-
 .ver-mais:hover {
     background: #00ff88;
     color: black;
@@ -276,6 +294,12 @@ a {
     border-radius: 20px;
     margin-left: auto;
     cursor: pointer;
+    transition: 0.2s;
+}
+.btn-seguir:hover {
+    transform: scale(0.98);
+    background: #00ff88;
+    color: black;
 }
 
 .btn-seguir.seguindo {
@@ -317,6 +341,11 @@ a {
     display: inline-block;
     padding: 10px 20px;
 }
+.btn-editar:hover {
+    background: #00ff88;
+    color: black;
+    transform: scale(0.98);
+}
 
 .btn-seguir-perfil {
     background: #262626;
@@ -328,6 +357,13 @@ a {
     margin-top: 15px;
     width: auto;
     display: inline-block;
+    transition: 0.2s;
+}
+.btn-seguir-perfil:hover {
+    background: #00ff88;
+    color: black;
+    border-color: black;
+    transform: scale(0.98);
 }
 
 .btn-seguir-perfil.seguindo {
@@ -346,9 +382,10 @@ a {
     display: inline-block;
     margin-top: 10px;
 }
-
 .btn-deletar-usuario:hover {
     background: #cc0000;
+    filter: brightness(1.1);
+    transform: scale(0.98);
 }
 
 /* ========== MODAIS ========== */
@@ -358,7 +395,7 @@ a {
     position: fixed;
     top: 0;
     left: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0,0,0,0.85);
     display: none;
     align-items: center;
     justify-content: center;
@@ -377,7 +414,24 @@ a {
     position: relative;
 }
 
-/* ========== MODAL EDITAR PERFIL - ESPAÇAMENTO ========== */
+.fechar {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: #262626;
+    color: white;
+    border-radius: 50%;
+}
+.fechar:hover {
+    background: #ff4444;
+    color: white;
+    transform: scale(0.95);
+}
+
+/* ========== MODAL EDITAR PERFIL - ESPAÇAMENTO E FOTO CIRCULAR ========== */
 #modalEditarPerfil .modal-content form {
     display: flex;
     flex-direction: column;
@@ -401,7 +455,15 @@ a {
 #modalEditarPerfil .modal-content #previewFoto {
     display: flex;
     justify-content: center;
-    margin: 5px 0;
+    margin: 10px 0;
+}
+
+#modalEditarPerfil .modal-content #previewFoto img {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
 }
 
 #modalEditarPerfil .modal-content button[type="submit"] {
@@ -409,16 +471,29 @@ a {
     background: #00ff88;
     color: black;
 }
+#modalEditarPerfil .modal-content button[type="submit"]:hover {
+    background: #22ff99;
+    transform: scale(0.98);
+}
 
-.fechar {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 40px;
-    height: 40px;
-    padding: 0;
+/* ========== BOTÃO PERSONALIZADO PARA UPLOAD DE FOTO ========== */
+.btn-upload-foto {
     background: #262626;
-    color: white;
+    color: #00ff88;
+    border: 1px solid #00ff88;
+    padding: 10px 16px;
+    border-radius: 30px;
+    display: inline-block;
+    cursor: pointer;
+    text-align: center;
+    font-weight: bold;
+    transition: 0.2s;
+    width: fit-content;
+}
+.btn-upload-foto:hover {
+    background: #00ff88;
+    color: black;
+    transform: scale(0.98);
 }
 
 /* ========== NAVEGAÇÃO INFERIOR ========== */
@@ -441,28 +516,16 @@ a {
     font-size: 16px;
     padding: 8px 16px;
     border-radius: 30px;
+    transition: 0.2s;
 }
-
 .nav-btn.active {
     background: #00ff88;
     color: black;
 }
-
-.btn-upload-foto {
-    background: #262626;
-    color: #00ff88;
-    border: 1px solid #00ff88;
-    padding: 10px 16px;
-    border-radius: 30px;
-    display: inline-block;
-    cursor: pointer;
-    text-align: center;
-    font-weight: bold;
-    transition: 0.2s;
-    width: fit-content;
-}
-.btn-upload-foto:hover {
-    background: #008b4a;
+.nav-btn:hover {
+    background: #00ff88;
+    color: black;
+    transform: scale(0.95);
 }
 
 .btn-sair {
@@ -470,91 +533,10 @@ a {
     margin-top: 20px;
     width: 100%;
 }
-
-/* ========== HOVER PARA TODOS OS BOTÕES ========== */
-
-/* Botão primário (verde) */
-button:not(.nav-btn):not(.fechar):not(.btn-sair):not(.excluir-btn):not(.btn-deletar-usuario):not(.btn-upload-foto):hover {
-    background: #22ff99;
-    transform: scale(0.98);
-    transition: all 0.2s ease;
-}
-
-/* Botões escuros (cancelar, secundários) */
-button.fechar:hover,
-button.btn-sair:hover,
-button.excluir-btn:hover,
-button.btn-deletar-usuario:hover {
+.btn-sair:hover {
+    background: #cc0000;
     filter: brightness(1.1);
     transform: scale(0.98);
-}
-
-/* Botão "Escolher foto" personalizado */
-.btn-upload-foto:hover {
-    background: #00ff88;
-    color: black;
-    transform: scale(0.98);
-}
-
-/* Botões da navegação inferior */
-.nav-btn:hover {
-    background: #00ff88;
-    color: black;
-    transform: scale(0.95);
-    transition: all 0.2s;
-}
-
-/* Botão "Postar" */
-#postarBtn:hover {
-    background: #22ff99;
-    transform: scale(0.98);
-}
-
-/* Botão "Voltar" no header */
-.header-right button:hover {
-    background: #00ff88;
-    color: black;
-    border-color: black;
-}
-
-/* Botão "Editar perfil" */
-.btn-editar:hover {
-    background: #00ff88;
-    color: black;
-}
-
-/* Botão "Seguir" no perfil */
-.btn-seguir-perfil:hover {
-    background: #00ff88;
-    color: black;
-    border-color: black;
-}
-
-/* Botão "Carregar mais posts" */
-#loadMoreBtn button:hover {
-    background: #22ff99;
-    color: black;
-    transform: scale(0.98);
-}
-
-/* Botão "Salvar alterações" no modal */
-#editarPerfilForm button[type="submit"]:hover {
-    background: #22ff99;
-    transform: scale(0.98);
-}
-
-/* Link que envolve logo e título */
-.logo-link {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    color: inherit;
-}
-
-.logo-link:hover {
-    opacity: 0.9;
-    cursor: pointer;
 }
 
 /* ========== MENSAGENS ========== */
@@ -572,63 +554,66 @@ button.btn-deletar-usuario:hover {
     border-radius: 12px;
 }
 
+/* ========== BOTÃO "CARREGAR MAIS" ========== */
+#loadMoreBtn button {
+    background: #262626;
+    color: #00ff88;
+    border: 1px solid #00ff88;
+    padding: 12px 24px;
+    border-radius: 30px;
+    transition: 0.2s;
+}
+#loadMoreBtn button:hover {
+    background: #22ff99;
+    color: black;
+    transform: scale(0.98);
+}
+
 /* ========== RESPONSIVIDADE ========== */
 @media (max-width: 768px) {
     body {
         font-size: 14px;
     }
-
     header {
         height: 65px;
         padding: 0 12px;
     }
-
     .logo {
         width: 40px;
     }
-
     header h1 {
         font-size: 1.5rem;
     }
-
     main {
         margin-top: 85px;
         padding: 0 12px;
     }
-
     .auth-card {
         padding: 20px;
     }
-
     .post {
         padding: 16px;
     }
-
     .post-acoes button {
         min-width: 60px;
         padding: 8px 10px;
         font-size: 12px;
     }
-
     .foto {
         width: 42px;
         height: 42px;
     }
-
     .foto-grande {
         width: 80px;
         height: 80px;
     }
-
     .bottom-nav {
         padding: 6px 0;
     }
-
     .nav-btn {
         padding: 6px 12px;
         font-size: 14px;
     }
-
     .btn-seguir-perfil {
         padding: 8px 16px;
         font-size: 14px;
@@ -639,85 +624,67 @@ button.btn-deletar-usuario:hover {
     header {
         height: 60px;
     }
-
     main {
         margin-top: 80px;
         gap: 16px;
     }
-
     .criar-post {
         padding: 16px;
     }
-
     textarea {
         padding: 12px;
         height: 100px;
     }
-
     .post {
         padding: 14px;
         gap: 12px;
     }
-
     .post-topo {
         gap: 8px;
     }
-
     .post-nome {
         font-size: 15px;
     }
-
     .post-usuario {
         font-size: 12px;
     }
-
     .post-conteudo {
         font-size: 13px;
     }
-
     .post-acoes button {
         min-width: 55px;
         padding: 6px 8px;
         font-size: 11px;
     }
-
     .btn-seguir {
         padding: 4px 12px;
         font-size: 11px;
     }
-
     .auth-card h1 {
         font-size: 36px;
     }
-
     .auth-card {
         padding: 16px;
     }
-
     .modal-content {
         width: 95%;
         padding: 16px;
     }
-
     .fechar {
         width: 32px;
         height: 32px;
         font-size: 12px;
     }
-
     .foto-grande {
         width: 70px;
         height: 70px;
     }
-
     .perfil-container h2 {
         font-size: 1.4rem;
     }
-
     .bottom-nav {
         padding: 5px 0;
     }
-
     .nav-btn {
         padding: 5px 10px;
         font-size: 13px;
@@ -725,13 +692,6 @@ button.btn-deletar-usuario:hover {
 }
 
 @keyframes fade {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
