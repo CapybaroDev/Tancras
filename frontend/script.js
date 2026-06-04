@@ -4,6 +4,7 @@ let paginaAtual = 1
 let carregando = false
 let temMaisPosts = true
 let feedElement = null
+let imagemSelecionada = null   // armazena base64 da imagem a ser postada
 
 // ========== LOADING OVERLAY ==========
 let requisicoesAtivas = 0
@@ -44,6 +45,34 @@ function esconderCarregamento() {
         requisicoesAtivas = 0
         const overlay = document.getElementById("loadingOverlay")
         if (overlay) overlay.style.display = "none"
+    }
+}
+
+// ========== FUNÇÃO PARA GERAR AVATAR COM INICIAL ==========
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function gerarAvatarHtml(nome, tamanho = 28) {
+    const letra = nome.charAt(0).toUpperCase();
+    const cor = `hsl(${hashCode(nome) % 360}, 70%, 60%)`;
+    return `<div class="avatar-mini" style="width:${tamanho}px;height:${tamanho}px;background:${cor};display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:bold;font-size:${tamanho*0.5}px;color:black;margin-right:8px;">${letra}</div>`;
+}
+
+function atualizarBotaoPerfil() {
+    const perfilBtn = document.getElementById("perfilNavBtn");
+    if (!perfilBtn || !usuario) return;
+    const nome = usuario.nome;
+    const fotoUrl = usuario.foto_perfil;
+    if (fotoUrl && fotoUrl.trim() !== "") {
+        perfilBtn.innerHTML = `<img src="${fotoUrl}" class="avatar-mini-img" alt="perfil"> Perfil`;
+    } else {
+        perfilBtn.innerHTML = gerarAvatarHtml(nome, 28) + " Perfil";
     }
 }
 
@@ -148,21 +177,36 @@ async function verMaisComentarios(id) {
     } catch(e) { area.innerHTML = '<div>Erro</div>' }
 }
 
+// ========== CRIAR POST COM TEXTO E/OU IMAGEM ==========
 async function criarPost() {
     if (!usuario) { alert("Faça login"); return }
     const textarea = document.getElementById("conteudoPost")
     const conteudo = textarea.value.trim()
-    if (!conteudo) return alert("Digite algo!")
+    const imagem = imagemSelecionada || ""
+
+    if (!conteudo && !imagem) {
+        alert("Digite algo ou selecione uma imagem!")
+        return
+    }
+
     try {
         const resp = await fetch(`${API}/posts`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ usuario_id: usuario.id, conteudo })
+            body: JSON.stringify({ usuario_id: usuario.id, conteudo, imagem })
         })
         if (resp.ok) {
             textarea.value = ""
+            imagemSelecionada = null
+            const previewDiv = document.getElementById("previewImagem")
+            if (previewDiv) previewDiv.innerHTML = ""
+            const inputImagem = document.getElementById("imagemPost")
+            if (inputImagem) inputImagem.value = ""
             resetarFeed()
-        } else alert("Erro ao criar post")
+        } else {
+            const erro = await resp.json()
+            alert(erro.erro || "Erro ao criar post")
+        }
     } catch(e) { alert("Erro de conexão") }
 }
 
@@ -270,9 +314,20 @@ async function carregarFeed() {
 
         for (const post of posts) {
             const podeExcluir = usuario && (usuario.id === post.usuario_id || usuario.id === 1)
-            const fotoPerfilUrl = post.foto_perfil ? `url(${post.foto_perfil})` : "#00ff88"
+            let fotoPerfilHtml = ''
+            if (post.foto_perfil && post.foto_perfil.trim() !== '') {
+                fotoPerfilHtml = `<div class="foto" style="background-image: url(${post.foto_perfil}); background-size:cover;"></div>`
+            } else {
+                const letra = (post.nome || 'U').charAt(0).toUpperCase();
+                const cor = `hsl(${hashCode(post.nome || '') % 360}, 70%, 60%)`;
+                fotoPerfilHtml = `<div class="foto avatar-fallback" style="background:${cor}; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:20px; color:black;">${letra}</div>`;
+            }
             const isOwnPost = usuario && (usuario.id === post.usuario_id)
             const botaoSeguirHtml = !isOwnPost ? `<button class="btn-seguir ${post.seguindo ? 'seguindo' : ''}" data-id="${post.usuario_id}">${post.seguindo ? '✓ Seguindo' : '+ Seguir'}</button>` : ''
+
+            const imagemHtml = post.imagem && post.imagem.trim() !== '' 
+                ? `<div class="post-imagem"><img src="${post.imagem}" loading="lazy" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>` 
+                : '';
 
             const comentariosHTML = `<div class="comentarios-area" id="comentarios-${post.id}"><button class="ver-mais" data-id="${post.id}">Ver comentários (${post.comentarios})</button></div>`
 
@@ -281,14 +336,15 @@ async function carregarFeed() {
             postDiv.id = `post-${post.id}`
             postDiv.innerHTML = `
                 <div class="post-topo">
-                    <div class="foto" style="background-image: ${fotoPerfilUrl}; background-size:cover;"></div>
+                    ${fotoPerfilHtml}
                     <div style="flex:1; margin-left:12px;">
                         <div class="post-nome" data-id="${post.usuario_id}" style="cursor:pointer;">${post.nome}</div>
                         <div class="post-usuario" data-id="${post.usuario_id}" style="cursor:pointer;">@${post.usuario}</div>
                     </div>
                     ${botaoSeguirHtml}
                 </div>
-                <div class="post-conteudo">${post.conteudo}</div>
+                ${post.conteudo ? `<div class="post-conteudo">${post.conteudo}</div>` : ''}
+                ${imagemHtml}
                 <div class="post-acoes">
                     <button id="curtir-btn-${post.id}" class="curtir-btn">❤️ ${post.curtidas}</button>
                     <button class="comentar-btn">💬 ${post.comentarios}</button>
@@ -372,6 +428,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const stored = localStorage.getItem("usuario")
     if (stored && stored !== "null") usuario = JSON.parse(stored)
 
+    atualizarBotaoPerfil();
+
+    // Configurar upload de imagem
+    const btnEscolherImagem = document.getElementById("btnEscolherImagem")
+    const inputImagem = document.getElementById("imagemPost")
+    const previewDiv = document.getElementById("previewImagem")
+
+    if (btnEscolherImagem && inputImagem) {
+        btnEscolherImagem.addEventListener("click", () => inputImagem.click())
+        inputImagem.addEventListener("change", function(e) {
+            const file = e.target.files[0]
+            if (file) {
+                const reader = new FileReader()
+                reader.onload = function(ev) {
+                    imagemSelecionada = ev.target.result
+                    if (previewDiv) {
+                        previewDiv.innerHTML = `<img src="${imagemSelecionada}" style="max-width:100%; max-height:200px; border-radius:12px;"> 
+                                                 <button type="button" id="removerImagemBtn" style="margin-top:8px;">❌ Remover</button>`
+                        const removerBtn = document.getElementById("removerImagemBtn")
+                        if (removerBtn) {
+                            removerBtn.addEventListener("click", () => {
+                                imagemSelecionada = null
+                                previewDiv.innerHTML = ""
+                                inputImagem.value = ""
+                            })
+                        }
+                    }
+                }
+                reader.readAsDataURL(file)
+            }
+        })
+    }
+
     feedElement = document.getElementById("feed")
     if (feedElement) {
         resetarFeed()
@@ -406,12 +495,30 @@ if (window.location.pathname.includes('user.html')) {
             if (!resp.ok) throw new Error()
             const user = await resp.json()
             const isOwnProfile = usuario && (usuario.id == userId)
-            const isAdmin = usuario && (usuario.id === 1)          // ADMIN
-            const fotoUrl = user.foto_perfil ? `url(${user.foto_perfil})` : "#00ff88"
+            const isAdmin = usuario && (usuario.id === 1)
+
+            // Ajusta o botão "Perfil" na navegação inferior (active apenas se for próprio perfil)
+            const perfilNavBtn = document.getElementById("perfilNavBtn");
+            if (perfilNavBtn) {
+                if (isOwnProfile) {
+                    perfilNavBtn.classList.add("active");
+                } else {
+                    perfilNavBtn.classList.remove("active");
+                }
+            }
+
+            let fotoGrandeHtml = ''
+            if (user.foto_perfil && user.foto_perfil.trim() !== '') {
+                fotoGrandeHtml = `<div class="foto-grande" style="background-image: url(${user.foto_perfil}); background-size:cover;"></div>`
+            } else {
+                const letra = (user.nome || 'U').charAt(0).toUpperCase();
+                const cor = `hsl(${hashCode(user.nome || '') % 360}, 70%, 60%)`;
+                fotoGrandeHtml = `<div class="foto-grande avatar-fallback" style="background:${cor}; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:40px; color:black;">${letra}</div>`;
+            }
 
             let html = `
                 <div class="perfil-container">
-                    <div class="foto-grande" style="background-image: ${fotoUrl}; background-size:cover;"></div>
+                    ${fotoGrandeHtml}
                     <h2>${user.nome}</h2>
                     <p style="color:gray;">@${user.usuario}</p>
                     <p class="bio">${user.bio || 'Sem bio ainda'}</p>
@@ -424,7 +531,6 @@ if (window.location.pathname.includes('user.html')) {
                 html += `<button id="seguirPerfilBtn" class="btn-seguir-perfil ${seguindo ? 'seguindo' : ''}">${seguindo ? '✓ Seguindo' : '+ Seguir'}</button>`
             }
 
-            // Botão deletar usuário (apenas admin, e não pode deletar a si mesmo)
             if (isAdmin && userId != 1) {
                 html += `<button id="deletarUsuarioBtn" class="btn-deletar-usuario">🗑️ Deletar Usuário</button>`
             }
@@ -451,9 +557,14 @@ if (window.location.pathname.includes('user.html')) {
             if (posts.length === 0) container.innerHTML += '<p>Nenhum post ainda.</p>'
             else {
                 posts.forEach(post => {
+                    let imagemHtml = ''
+                    if (post.imagem && post.imagem.trim() !== '') {
+                        imagemHtml = `<div class="post-imagem"><img src="${post.imagem}" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>`
+                    }
                     container.innerHTML += `
                         <div class="post">
-                            <div class="post-conteudo">${post.conteudo}</div>
+                            ${post.conteudo ? `<div class="post-conteudo">${post.conteudo}</div>` : ''}
+                            ${imagemHtml}
                             <div class="post-acoes">❤️ ${post.curtidas} | 💬 ${post.comentarios}</div>
                         </div>
                     `
@@ -507,7 +618,11 @@ if (window.location.pathname.includes('user.html')) {
                     usuario.bio = updated.bio
                     usuario.foto_perfil = updated.foto_perfil
                     localStorage.setItem('usuario', JSON.stringify(usuario))
+                    atualizarBotaoPerfil()
                     carregarPerfilUsuario()
+                    if (window.location.pathname.includes('index.html')) {
+                        resetarFeed()
+                    }
                 } else { const erro = await resp.json(); alert(erro.erro || 'Erro') }
             } catch(err) { alert('Erro de conexão') }
         }
@@ -528,6 +643,7 @@ if (window.location.pathname.includes('user.html')) {
     if (fecharConfig) fecharConfig.addEventListener('click', () => modalConfig.style.display = 'none')
     if (sairBtn) sairBtn.addEventListener('click', logout)
 
+    atualizarBotaoPerfil();
     carregarPerfilUsuario()
 }
 

@@ -193,14 +193,24 @@ def criar_post():
         if not dados:
             return erro_resposta("Dados JSON inválidos", 400)
         usuario_id = dados.get("usuario_id")
-        conteudo = dados.get("conteudo")
-        if not usuario_id or not conteudo:
-            return jsonify({"erro": "dados inválidos"}), 400
-        if not isinstance(conteudo, str) or not conteudo.strip():
-            return jsonify({"erro": "conteúdo inválido"}), 400
+        conteudo = dados.get("conteudo", "").strip()
+        imagem = dados.get("imagem", "").strip()  # pode vir como base64 ou vazio
+
+        if not usuario_id:
+            return jsonify({"erro": "usuario_id obrigatório"}), 400
+        if not conteudo and not imagem:
+            return jsonify({"erro": "é necessário fornecer texto ou imagem"}), 400
+
+        # Se a imagem for muito grande, rejeitar (ex: 5MB)
+        if imagem and len(imagem) > 5 * 1024 * 1024:
+            return jsonify({"erro": "imagem muito grande (máx 5MB)"}), 400
+
         conn = conectar()
         cur = conn.cursor()
-        cur.execute("INSERT INTO posts (usuario_id, conteudo) VALUES (%s, %s)", (usuario_id, conteudo))
+        cur.execute(
+            "INSERT INTO posts (usuario_id, conteudo, imagem) VALUES (%s, %s, %s)",
+            (usuario_id, conteudo, imagem if imagem else None)
+        )
         cur.execute("UPDATE usuario SET postagens = postagens + 1 WHERE id = %s", (usuario_id,))
         conn.commit()
         return jsonify({"mensagem": "post criado"}), 201

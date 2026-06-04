@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +7,6 @@
     <title>Tancras</title>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
     <header>
         <a href="index.html" class="logo-link">
@@ -19,7 +17,12 @@
     <main>
         <div class="criar-post">
             <textarea id="conteudoPost" placeholder="O que está acontecendo?"></textarea>
-            <button type="button" id="postarBtn">Postar</button>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <input type="file" id="imagemPost" accept="image/*" style="display: none;">
+                <button type="button" id="btnEscolherImagem" class="btn-imagem">📷</button>
+                <button type="button" id="postarBtn">Postar</button>
+            </div>
+            <div id="previewImagem" style="margin-top: 10px;"></div>
         </div>
         <div id="feed"></div>
     </main>
@@ -40,5 +43,4 @@
 
     <script src="script.js"></script>
 </body>
-
 </html>

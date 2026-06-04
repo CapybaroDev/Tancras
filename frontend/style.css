@@ -569,6 +569,49 @@ a {
     transform: scale(0.98);
 }
 
+/* ========== AVATAR MINI NO BOTÃO PERFIL ========== */
+.avatar-mini {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    color: black;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.avatar-mini-img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    object-fit: cover;
+}
+
+/* Fallback para foto de perfil em posts */
+.foto.avatar-fallback {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 20px;
+    color: black;
+    background-size: auto !important;
+}
+
+.post-imagem img {
+    max-width: 100%;
+    border-radius: 12px;
+    margin-top: 10px;
+    max-height: 400px;
+    object-fit: contain;
+}
+
 /* ========== RESPONSIVIDADE ========== */
 @media (max-width: 768px) {
     body {
