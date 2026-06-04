@@ -194,14 +194,13 @@ def criar_post():
             return erro_resposta("Dados JSON inválidos", 400)
         usuario_id = dados.get("usuario_id")
         conteudo = dados.get("conteudo", "").strip()
-        imagem = dados.get("imagem", "").strip()  # pode vir como base64 ou vazio
+        imagem = dados.get("imagem", "").strip()
 
         if not usuario_id:
             return jsonify({"erro": "usuario_id obrigatório"}), 400
         if not conteudo and not imagem:
             return jsonify({"erro": "é necessário fornecer texto ou imagem"}), 400
 
-        # Se a imagem for muito grande, rejeitar (ex: 5MB)
         if imagem and len(imagem) > 5 * 1024 * 1024:
             return jsonify({"erro": "imagem muito grande (máx 5MB)"}), 400
 
@@ -376,11 +375,9 @@ def feed():
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Total de posts
         cur.execute("SELECT COUNT(*) FROM posts")
         total_posts = cur.fetchone()["count"]
 
-        # Buscar posts
         cur.execute("""
             SELECT
                 p.id,
@@ -417,6 +414,35 @@ def feed():
     except Exception as e:
         logger.error(f"Erro no feed: {e}")
         return jsonify({"erro": "Erro interno ao carregar feed", "detalhe": str(e)}), 500
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
+@app.route("/usuarios/search", methods=["GET"])
+def buscar_usuarios():
+    try:
+        q = request.args.get("q", "").strip()
+        if len(q) < 2:
+            return jsonify([])
+        
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, nome, usuario, foto_perfil
+            FROM usuario
+            WHERE usuario ILIKE %s OR nome ILIKE %s
+            ORDER BY 
+                CASE 
+                    WHEN usuario ILIKE %s THEN 1
+                    WHEN nome ILIKE %s THEN 2
+                    ELSE 3
+                END
+            LIMIT 10
+        """, (f"%{q}%", f"%{q}%", f"{q}%", f"{q}%"))
+        usuarios = cur.fetchall()
+        return jsonify(usuarios)
+    except Exception as e:
+        return erro_resposta("Erro na busca", e, 500)
     finally:
         if cur: cur.close()
         if conn: conn.close()
@@ -521,7 +547,6 @@ def deletar_usuario(id):
             return jsonify({"erro": "usuario_id obrigatório"}), 400
 
         admin_id = dados.get("usuario_id")
-        # Apenas o admin (id = 1) pode deletar usuários
         if admin_id != 1:
             return jsonify({"erro": "Apenas o administrador pode deletar usuários"}), 403
 
@@ -531,12 +556,10 @@ def deletar_usuario(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Verifica se o usuário existe
         cur.execute("SELECT id FROM usuario WHERE id = %s", (id,))
         if not cur.fetchone():
             return jsonify({"erro": "Usuário não encontrado"}), 404
 
-        # Deleta o usuário (as chaves estrangeiras com ON DELETE CASCADE cuidam do resto)
         cur.execute("DELETE FROM usuario WHERE id = %s", (id,))
         conn.commit()
 

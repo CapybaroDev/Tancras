@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +8,18 @@
     <title>Tancras</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <header>
         <a href="index.html" class="logo-link">
             <img src="assets/logo.png" alt="logo" class="logo">
             <h1>Tancras</h1>
         </a>
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Buscar usuários..." autocomplete="off">
+            <div id="searchResults" class="search-results"></div>
+        </div>
+        <div class="header-placeholder"></div>
     </header>
     <main>
         <div class="criar-post">
@@ -43,4 +50,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

@@ -4,7 +4,7 @@ let paginaAtual = 1
 let carregando = false
 let temMaisPosts = true
 let feedElement = null
-let imagemSelecionada = null   // armazena base64 da imagem a ser postada
+let imagemSelecionada = null
 
 // ========== LOADING OVERLAY ==========
 let requisicoesAtivas = 0
@@ -48,7 +48,7 @@ function esconderCarregamento() {
     }
 }
 
-// ========== FUNÇÃO PARA GERAR AVATAR COM INICIAL ==========
+// ========== UTILITÁRIOS ==========
 function hashCode(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -56,6 +56,31 @@ function hashCode(str) {
         hash |= 0;
     }
     return Math.abs(hash);
+}
+
+function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+function formatarData(dataISO) {
+    if (!dataISO) return "";
+    const data = new Date(dataISO);
+    const agora = new Date();
+    const diffMs = agora - data;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHoras = Math.floor(diffMs / 3600000);
+    const diffDias = Math.floor(diffMs / 86400000);
+    
+    if (diffMin < 1) return "agora mesmo";
+    if (diffMin < 60) return `há ${diffMin} min`;
+    if (diffHoras < 24) return `há ${diffHoras} h`;
+    if (diffDias < 7) return `há ${diffDias} d`;
+    return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
 function gerarAvatarHtml(nome, tamanho = 28) {
@@ -177,7 +202,7 @@ async function verMaisComentarios(id) {
     } catch(e) { area.innerHTML = '<div>Erro</div>' }
 }
 
-// ========== CRIAR POST COM TEXTO E/OU IMAGEM ==========
+// ========== CRIAR POST ==========
 async function criarPost() {
     if (!usuario) { alert("Faça login"); return }
     const textarea = document.getElementById("conteudoPost")
@@ -228,7 +253,7 @@ async function excluirPost(id) {
     } catch(e) { alert("Erro de conexão") }
 }
 
-// ========== DELETAR USUÁRIO (APENAS ADMIN) ==========
+// ========== DELETAR USUÁRIO (ADMIN) ==========
 async function deletarUsuario(userId) {
     if (!usuario || usuario.id !== 1) {
         alert("Apenas o administrador pode deletar usuários.");
@@ -329,6 +354,7 @@ async function carregarFeed() {
                 ? `<div class="post-imagem"><img src="${post.imagem}" loading="lazy" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>` 
                 : '';
 
+            const dataHtml = `<div class="post-data">${formatarData(post.data_post)}</div>`;
             const comentariosHTML = `<div class="comentarios-area" id="comentarios-${post.id}"><button class="ver-mais" data-id="${post.id}">Ver comentários (${post.comentarios})</button></div>`
 
             const postDiv = document.createElement('div')
@@ -350,12 +376,13 @@ async function carregarFeed() {
                     <button class="comentar-btn">💬 ${post.comentarios}</button>
                     ${podeExcluir ? `<button class="excluir-btn" data-id="${post.id}">🗑️ Excluir</button>` : ''}
                 </div>
+                ${dataHtml}
                 ${comentariosHTML}
             `
             feedElement.appendChild(postDiv)
         }
 
-        // Adicionar eventos
+        // Eventos
         for (const post of posts) {
             const postDiv = document.getElementById(`post-${post.id}`)
             if (!postDiv) continue
@@ -378,7 +405,6 @@ async function carregarFeed() {
 
         paginaAtual++
 
-        // Botão "Carregar mais"
         const existingBtn = document.getElementById("loadMoreBtn")
         if (existingBtn) existingBtn.remove()
 
@@ -412,6 +438,72 @@ async function carregarFeed() {
     }
 }
 
+// ========== BUSCA DE USUÁRIOS ==========
+let searchTimeout = null;
+const searchInput = document.getElementById("searchInput");
+const searchResults = document.getElementById("searchResults");
+
+if (searchInput && searchResults) {
+    searchInput.addEventListener("input", function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        
+        if (query.length < 2) {
+            searchResults.classList.remove("show");
+            searchResults.innerHTML = "";
+            return;
+        }
+        
+        searchTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch(`${API}/usuarios/search?q=${encodeURIComponent(query)}`);
+                const usuarios = await resp.json();
+                renderSearchResults(usuarios);
+            } catch(e) {
+                console.error("Erro na busca:", e);
+                searchResults.innerHTML = '<div class="search-result-item">Erro ao buscar</div>';
+                searchResults.classList.add("show");
+            }
+        }, 300);
+    });
+    
+    document.addEventListener("click", function(e) {
+        if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.classList.remove("show");
+        }
+    });
+}
+
+function renderSearchResults(usuarios) {
+    searchResults.innerHTML = "";
+    if (!usuarios.length) {
+        searchResults.innerHTML = '<div class="search-result-item">Nenhum usuário encontrado</div>';
+        searchResults.classList.add("show");
+        return;
+    }
+    
+    usuarios.forEach(user => {
+        const avatarHtml = user.foto_perfil 
+            ? `<div class="search-result-avatar" style="background-image: url(${user.foto_perfil}); background-size:cover;"></div>`
+            : `<div class="search-result-avatar" style="background: #00ff88; display:flex; align-items:center; justify-content:center; font-weight:bold;">${user.nome.charAt(0).toUpperCase()}</div>`;
+        
+        const item = document.createElement("div");
+        item.className = "search-result-item";
+        item.innerHTML = `
+            ${avatarHtml}
+            <div class="search-result-info">
+                <div class="search-result-name">${escapeHtml(user.nome)}</div>
+                <div class="search-result-username">@${escapeHtml(user.usuario)}</div>
+            </div>
+        `;
+        item.addEventListener("click", () => {
+            window.location.href = `user.html?id=${user.id}`;
+        });
+        searchResults.appendChild(item);
+    });
+    searchResults.classList.add("show");
+}
+
 // ========== LOGOUT E NAVEGAÇÃO ==========
 function logout() { localStorage.removeItem("usuario"); window.location.href = "login.html" }
 function navegarPara(destino) {
@@ -430,7 +522,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     atualizarBotaoPerfil();
 
-    // Configurar upload de imagem
     const btnEscolherImagem = document.getElementById("btnEscolherImagem")
     const inputImagem = document.getElementById("imagemPost")
     const previewDiv = document.getElementById("previewImagem")
@@ -497,7 +588,6 @@ if (window.location.pathname.includes('user.html')) {
             const isOwnProfile = usuario && (usuario.id == userId)
             const isAdmin = usuario && (usuario.id === 1)
 
-            // Ajusta o botão "Perfil" na navegação inferior (active apenas se for próprio perfil)
             const perfilNavBtn = document.getElementById("perfilNavBtn");
             if (perfilNavBtn) {
                 if (isOwnProfile) {
@@ -561,11 +651,13 @@ if (window.location.pathname.includes('user.html')) {
                     if (post.imagem && post.imagem.trim() !== '') {
                         imagemHtml = `<div class="post-imagem"><img src="${post.imagem}" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>`
                     }
+                    const dataHtml = `<div class="post-data">📅 ${formatarData(post.data_post)}</div>`;
                     container.innerHTML += `
                         <div class="post">
                             ${post.conteudo ? `<div class="post-conteudo">${post.conteudo}</div>` : ''}
                             ${imagemHtml}
                             <div class="post-acoes">❤️ ${post.curtidas} | 💬 ${post.comentarios}</div>
+                            ${dataHtml}
                         </div>
                     `
                 })

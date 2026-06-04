@@ -12,7 +12,7 @@ body {
     font-size: 14px;
 }
 
-/* ========== HEADER RESPONSIVO ========== */
+/* ========== HEADER RESPONSIVO COM PESQUISA CENTRALIZADA ========== */
 header {
     height: 70px;
     width: 100%;
@@ -25,20 +25,16 @@ header {
     top: 0;
     z-index: 1000;
     padding: 0 16px;
+    gap: 16px;
 }
 
-/* Link que envolve logo e título */
 .logo-link {
     display: flex;
     align-items: center;
     gap: 8px;
     text-decoration: none;
     color: inherit;
-}
-
-.logo-link:hover {
-    opacity: 0.9;
-    cursor: pointer;
+    flex-shrink: 0;
 }
 
 .logo {
@@ -51,21 +47,97 @@ header h1 {
     font-size: 1.8rem;
 }
 
-.header-right button {
+/* Container da barra de pesquisa - centralizado */
+.search-container {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* Placeholder à direita para equilibrar o layout */
+.header-placeholder {
+    width: 120px; /* mesma largura aproximada da logo + título */
+    flex-shrink: 0;
+    visibility: hidden;
+}
+
+#searchInput {
+    width: 100%;
     background: #262626;
-    color: #00ff88;
-    border: 1px solid #00ff88;
-    padding: 8px 16px;
+    border: 1px solid #3a3a3a;
     border-radius: 30px;
+    padding: 8px 16px;
     font-size: 14px;
-    cursor: pointer;
+    color: white;
     transition: 0.2s;
 }
 
-.header-right button:hover {
-    background: #00ff88;
-    color: black;
-    border-color: black;
+#searchInput:focus {
+    border-color: #00ff88;
+    outline: none;
+    background: #1f1f1f;
+}
+
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1a1a1a;
+    border: 1px solid #2f2f2f;
+    border-radius: 16px;
+    margin-top: 8px;
+    z-index: 1000;
+    max-height: 300px;
+    overflow-y: auto;
+    display: none;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+}
+
+.search-results.show {
+    display: block;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: 0.1s;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background: #262626;
+}
+
+.search-result-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+    flex-shrink: 0;
+}
+
+.search-result-info {
+    flex: 1;
+}
+
+.search-result-name {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.search-result-username {
+    color: gray;
+    font-size: 12px;
 }
 
 /* ========== MAIN ========== */
@@ -238,6 +310,16 @@ a {
     background: #cc0000;
     filter: brightness(1.1);
     transform: scale(0.98);
+}
+
+.post-data {
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 4px;
+    text-align: left;
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
 /* ========== COMENTÁRIOS ========== */
@@ -431,7 +513,7 @@ a {
     transform: scale(0.95);
 }
 
-/* ========== MODAL EDITAR PERFIL - ESPAÇAMENTO E FOTO CIRCULAR ========== */
+/* ========== MODAL EDITAR PERFIL ========== */
 #modalEditarPerfil .modal-content form {
     display: flex;
     flex-direction: column;
@@ -473,26 +555,6 @@ a {
 }
 #modalEditarPerfil .modal-content button[type="submit"]:hover {
     background: #22ff99;
-    transform: scale(0.98);
-}
-
-/* ========== BOTÃO PERSONALIZADO PARA UPLOAD DE FOTO ========== */
-.btn-upload-foto {
-    background: #262626;
-    color: #00ff88;
-    border: 1px solid #00ff88;
-    padding: 10px 16px;
-    border-radius: 30px;
-    display: inline-block;
-    cursor: pointer;
-    text-align: center;
-    font-weight: bold;
-    transition: 0.2s;
-    width: fit-content;
-}
-.btn-upload-foto:hover {
-    background: #00ff88;
-    color: black;
     transform: scale(0.98);
 }
 
@@ -593,7 +655,6 @@ a {
     object-fit: cover;
 }
 
-/* Fallback para foto de perfil em posts */
 .foto.avatar-fallback {
     display: flex !important;
     align-items: center;
@@ -620,12 +681,23 @@ a {
     header {
         height: 65px;
         padding: 0 12px;
+        gap: 8px;
     }
     .logo {
         width: 40px;
     }
     header h1 {
         font-size: 1.5rem;
+    }
+    .search-container {
+        max-width: 200px;
+    }
+    .header-placeholder {
+        width: 80px;
+    }
+    #searchInput {
+        padding: 6px 12px;
+        font-size: 12px;
     }
     main {
         margin-top: 85px;
@@ -666,6 +738,12 @@ a {
 @media (max-width: 480px) {
     header {
         height: 60px;
+    }
+    .search-container {
+        max-width: 140px;
+    }
+    .header-placeholder {
+        width: 60px;
     }
     main {
         margin-top: 80px;
