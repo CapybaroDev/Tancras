@@ -351,7 +351,7 @@ async function carregarFeed() {
             const botaoSeguirHtml = !isOwnPost ? `<button class="btn-seguir ${post.seguindo ? 'seguindo' : ''}" data-id="${post.usuario_id}">${post.seguindo ? '✓ Seguindo' : '+ Seguir'}</button>` : ''
 
             const imagemHtml = post.imagem && post.imagem.trim() !== '' 
-                ? `<div class="post-imagem"><img src="${post.imagem}" loading="lazy" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>` 
+                ? `<div class="post-imagem"><img src="${post.imagem}" loading="lazy"></div>` 
                 : '';
 
             const dataHtml = `<div class="post-data">${formatarData(post.data_post)}</div>`;
@@ -649,7 +649,7 @@ if (window.location.pathname.includes('user.html')) {
                 posts.forEach(post => {
                     let imagemHtml = ''
                     if (post.imagem && post.imagem.trim() !== '') {
-                        imagemHtml = `<div class="post-imagem"><img src="${post.imagem}" style="max-width:100%; border-radius:12px; margin-top:10px;"></div>`
+                        imagemHtml = `<div class="post-imagem"><img src="${post.imagem}" style="max-width:100%; border-radius:12px;"></div>`
                     }
                     const dataHtml = `<div class="post-data">📅 ${formatarData(post.data_post)}</div>`;
                     container.innerHTML += `
