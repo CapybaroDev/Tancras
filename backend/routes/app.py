@@ -53,6 +53,7 @@ def criar_tabelas():
                 seguindo INTEGER DEFAULT 0,
                 postagens INTEGER DEFAULT 0,
                 verificado BOOLEAN DEFAULT FALSE,
+                admin BOOLEAN DEFAULT FALSE,
                 data_criacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -163,7 +164,7 @@ def login():
             return jsonify({"erro": "email e senha obrigatórios"}), 400
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, nome, usuario, senha, foto_perfil FROM usuario WHERE email = %s", (email,))
+        cur.execute("SELECT id, nome, usuario, senha, foto_perfil, admin, verificado FROM usuario WHERE email = %s", (email,))
         usuario = cur.fetchone()
         if not usuario:
             return jsonify({"erro": "usuário não encontrado"}), 404
@@ -175,7 +176,9 @@ def login():
                 "id": usuario["id"],
                 "nome": usuario["nome"],
                 "usuario": usuario["usuario"],
-                "foto_perfil": usuario["foto_perfil"]
+                "foto_perfil": usuario["foto_perfil"],
+                "admin": usuario["admin"],
+                "verificado": usuario["verificado"]
             }
         })
     except Exception as e:
@@ -234,8 +237,15 @@ def deletar_post(id):
         post = cur.fetchone()
         if not post:
             return jsonify({"erro": "post não encontrado"}), 404
-        if post["usuario_id"] != usuario_id and usuario_id != 1:
+
+        # Verifica se o usuário atual é admin
+        cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
+        user = cur.fetchone()
+        is_admin = user and user["admin"]
+
+        if post["usuario_id"] != usuario_id and not is_admin:
             return jsonify({"erro": "sem permissão"}), 403
+
         cur.execute("DELETE FROM posts WHERE id = %s", (id,))
         cur.execute("UPDATE usuario SET postagens = postagens - 1 WHERE id = %s AND postagens > 0", (post["usuario_id"],))
         conn.commit()
@@ -391,6 +401,7 @@ def feed():
                 u.nome,
                 u.usuario,
                 u.foto_perfil,
+                u.verificado,
                 CASE WHEN %s IS NOT NULL AND EXISTS (
                     SELECT 1 FROM seguidores 
                     WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
@@ -455,17 +466,40 @@ def buscar_usuario(id):
         usuario_logado_id = request.args.get("usuario_id", type=int)
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
-            SELECT
-                id, nome, usuario, bio, foto_perfil, banner,
-                seguidores, seguindo, postagens, verificado, data_criacao,
-                CASE WHEN %s IS NOT NULL AND EXISTS (
-                    SELECT 1 FROM seguidores 
-                    WHERE seguidor_id = %s AND seguindo_id = id
-                ) THEN true ELSE false END AS seguido_por_voce
-            FROM usuario
-            WHERE id = %s
-        """, (usuario_logado_id, usuario_logado_id, id))
+        
+        # Verifica se o usuário logado é admin
+        is_admin = False
+        if usuario_logado_id:
+            cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_logado_id,))
+            admin_row = cur.fetchone()
+            if admin_row:
+                is_admin = admin_row["admin"]
+        
+        if is_admin:
+            cur.execute("""
+                SELECT
+                    id, nome, usuario, bio, foto_perfil, banner,
+                    seguidores, seguindo, postagens, verificado, admin, data_criacao,
+                    CASE WHEN %s IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM seguidores 
+                        WHERE seguidor_id = %s AND seguindo_id = id
+                    ) THEN true ELSE false END AS seguido_por_voce
+                FROM usuario
+                WHERE id = %s
+            """, (usuario_logado_id, usuario_logado_id, id))
+        else:
+            cur.execute("""
+                SELECT
+                    id, nome, usuario, bio, foto_perfil, banner,
+                    seguidores, seguindo, postagens, verificado, data_criacao,
+                    CASE WHEN %s IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM seguidores 
+                        WHERE seguidor_id = %s AND seguindo_id = id
+                    ) THEN true ELSE false END AS seguido_por_voce
+                FROM usuario
+                WHERE id = %s
+            """, (usuario_logado_id, usuario_logado_id, id))
+        
         usuario = cur.fetchone()
         if not usuario:
             return jsonify({"erro": "usuário não encontrado"}), 404
@@ -487,22 +521,32 @@ def atualizar_usuario(id):
         usuario_id = dados.get("usuario_id")
         if not usuario_id:
             return jsonify({"erro": "usuario_id obrigatório"}), 400
-        if usuario_id != id and usuario_id != 1:
+        
+        # Verifica se o usuário atual é admin
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
+        user = cur.fetchone()
+        is_admin = user and user["admin"]
+        
+        if usuario_id != id and not is_admin:
             return jsonify({"erro": "sem permissão"}), 403
+        
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT * FROM usuario WHERE id = %s", (id,))
         usuario = cur.fetchone()
         if not usuario:
             return jsonify({"erro": "usuário não encontrado"}), 404
+        
         nome = dados.get("nome", usuario["nome"])
         bio = dados.get("bio", usuario.get("bio"))
         foto_perfil = dados.get("foto_perfil", usuario.get("foto_perfil"))
         if foto_perfil and len(foto_perfil) > 1000000:
             return jsonify({"erro": "imagem muito grande"}), 400
+        
         cur.execute("UPDATE usuario SET nome=%s, bio=%s, foto_perfil=%s WHERE id=%s", (nome, bio, foto_perfil, id))
         conn.commit()
-        cur.execute("SELECT id, nome, usuario, bio, foto_perfil, seguidores, seguindo, postagens FROM usuario WHERE id=%s", (id,))
+        cur.execute("SELECT id, nome, usuario, bio, foto_perfil, seguidores, seguindo, postagens, admin, verificado FROM usuario WHERE id=%s", (id,))
         atualizado = cur.fetchone()
         return jsonify(atualizado)
     except Exception as e:
@@ -522,7 +566,7 @@ def posts_usuario(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT p.*, u.nome, u.usuario
+            SELECT p.*, u.nome, u.usuario, u.verificado
             FROM posts p
             JOIN usuario u ON p.usuario_id = u.id
             WHERE u.id = %s
@@ -547,14 +591,17 @@ def deletar_usuario(id):
             return jsonify({"erro": "usuario_id obrigatório"}), 400
 
         admin_id = dados.get("usuario_id")
-        if admin_id != 1:
-            return jsonify({"erro": "Apenas o administrador pode deletar usuários"}), 403
-
-        if id == 1:
-            return jsonify({"erro": "Não é possível deletar o administrador principal"}), 403
-
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Verifica se o solicitante é admin
+        cur.execute("SELECT admin FROM usuario WHERE id = %s", (admin_id,))
+        admin_check = cur.fetchone()
+        if not admin_check or not admin_check["admin"]:
+            return jsonify({"erro": "Apenas administradores podem deletar usuários"}), 403
+
+        if id == admin_id:
+            return jsonify({"erro": "Não é possível deletar o próprio administrador"}), 403
 
         cur.execute("SELECT id FROM usuario WHERE id = %s", (id,))
         if not cur.fetchone():
@@ -562,16 +609,64 @@ def deletar_usuario(id):
 
         cur.execute("DELETE FROM usuario WHERE id = %s", (id,))
         conn.commit()
-
         return jsonify({"mensagem": "Usuário deletado com sucesso"}), 200
 
     except Exception as e:
         return erro_resposta("Erro ao deletar usuário", e, 500)
     finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
+        if cur: cur.close()
+        if conn: conn.close()
+
+# ========== NOVA ROTA ADMIN ==========
+@app.route("/admin/usuarios/<int:id>", methods=["PUT"])
+def admin_atualizar_usuario(id):
+    """Rota para administrador definir admin e verificado de um usuário"""
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados or "admin_id" not in dados:
+            return jsonify({"erro": "admin_id obrigatório"}), 400
+        
+        admin_id = dados.get("admin_id")
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verificar se quem está fazendo a requisição é admin
+        cur.execute("SELECT admin FROM usuario WHERE id = %s", (admin_id,))
+        admin_check = cur.fetchone()
+        if not admin_check or not admin_check["admin"]:
+            return jsonify({"erro": "Apenas administradores podem executar esta ação"}), 403
+        
+        # Atualizar campos do usuário alvo
+        set_clauses = []
+        params = []
+        if "admin" in dados:
+            set_clauses.append("admin = %s")
+            params.append(dados["admin"])
+        if "verificado" in dados:
+            set_clauses.append("verificado = %s")
+            params.append(dados["verificado"])
+        
+        if not set_clauses:
+            return jsonify({"erro": "Nenhum campo para atualizar"}), 400
+        
+        params.append(id)
+        query = f"UPDATE usuario SET {', '.join(set_clauses)} WHERE id = %s RETURNING id, nome, usuario, admin, verificado"
+        cur.execute(query, params)
+        updated = cur.fetchone()
+        
+        if not updated:
+            return jsonify({"erro": "Usuário não encontrado"}), 404
+        
+        conn.commit()
+        return jsonify(updated)
+    
+    except Exception as e:
+        return erro_resposta("Erro ao atualizar usuário pelo admin", e, 500)
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
 
 @app.route("/", methods=["GET"])
 def home():

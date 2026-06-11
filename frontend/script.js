@@ -1,4 +1,4 @@
-const API = "https://tancras.onrender.com"
+const API = "http://127.0.0.1:5000"
 let usuario = null
 let paginaAtual = 1
 let carregando = false
@@ -101,10 +101,18 @@ function atualizarBotaoPerfil() {
     }
 }
 
-// ========== VERIFICA LOGIN ==========
+// ========== VERIFICA LOGIN (com fallback para admin id=1) ==========
 try {
     const stored = localStorage.getItem("usuario")
-    if (stored && stored !== "null") usuario = JSON.parse(stored)
+    if (stored && stored !== "null") {
+        usuario = JSON.parse(stored)
+        // Fallback: se for o id 1 e admin não estiver definido, força true
+        if (usuario.id === 1 && !usuario.admin) {
+            usuario.admin = true
+            localStorage.setItem("usuario", JSON.stringify(usuario))
+            console.log("Fallback: usuário id=1 configurado como admin no frontend")
+        }
+    }
 } catch(e) { usuario = null }
 
 const paginaAtualPath = window.location.pathname
@@ -255,8 +263,8 @@ async function excluirPost(id) {
 
 // ========== DELETAR USUÁRIO (ADMIN) ==========
 async function deletarUsuario(userId) {
-    if (!usuario || usuario.id !== 1) {
-        alert("Apenas o administrador pode deletar usuários.");
+    if (!usuario || !usuario.admin) {
+        alert("Apenas administradores podem deletar usuários.");
         return;
     }
     const confirmar = confirm(`Tem certeza que deseja deletar o usuário #${userId}? Esta ação é irreversível.`);
@@ -282,6 +290,55 @@ async function deletarUsuario(userId) {
     } catch (err) {
         alert("Erro de conexão ao deletar usuário");
         console.error(err);
+    }
+}
+
+// ========== ADMIN: ALTERAR ADMIN/VERIFICADO ==========
+async function alterarAdminStatus(userId, tornarAdmin) {
+    if (!usuario || !usuario.admin) {
+        alert("Apenas administradores podem realizar esta ação.");
+        return;
+    }
+    try {
+        const resp = await fetch(`${API}/admin/usuarios/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ admin_id: usuario.id, admin: tornarAdmin })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`Usuário ${tornarAdmin ? "agora é administrador" : "não é mais administrador"}`);
+            carregarPerfilUsuario(); // recarrega a página do perfil
+        } else {
+            alert(data.erro || "Erro ao alterar status de admin");
+        }
+    } catch(e) {
+        alert("Erro de conexão");
+        console.error(e);
+    }
+}
+
+async function alterarVerificadoStatus(userId, verificar) {
+    if (!usuario || !usuario.admin) {
+        alert("Apenas administradores podem realizar esta ação.");
+        return;
+    }
+    try {
+        const resp = await fetch(`${API}/admin/usuarios/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ admin_id: usuario.id, verificado: verificar })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`Usuário ${verificar ? "verificado" : "não verificado"}`);
+            carregarPerfilUsuario();
+        } else {
+            alert(data.erro || "Erro ao alterar verificação");
+        }
+    } catch(e) {
+        alert("Erro de conexão");
+        console.error(e);
     }
 }
 
@@ -338,7 +395,7 @@ async function carregarFeed() {
         }
 
         for (const post of posts) {
-            const podeExcluir = usuario && (usuario.id === post.usuario_id || usuario.id === 1)
+            const podeExcluir = usuario && (usuario.id === post.usuario_id || usuario.admin)
             let fotoPerfilHtml = ''
             if (post.foto_perfil && post.foto_perfil.trim() !== '') {
                 fotoPerfilHtml = `<div class="foto" style="background-image: url(${post.foto_perfil}); background-size:cover;"></div>`
@@ -349,6 +406,8 @@ async function carregarFeed() {
             }
             const isOwnPost = usuario && (usuario.id === post.usuario_id)
             const botaoSeguirHtml = !isOwnPost ? `<button class="btn-seguir ${post.seguindo ? 'seguindo' : ''}" data-id="${post.usuario_id}">${post.seguindo ? '✓ Seguindo' : '+ Seguir'}</button>` : ''
+
+            const verificadoBadge = post.verificado ? '<span class="verificado-badge" style="background:#00ff88; color:black; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; font-size:10px; margin-left:4px;">✓</span>' : '';
 
             const imagemHtml = post.imagem && post.imagem.trim() !== '' 
                 ? `<div class="post-imagem"><img src="${post.imagem}" loading="lazy"></div>` 
@@ -364,7 +423,7 @@ async function carregarFeed() {
                 <div class="post-topo">
                     ${fotoPerfilHtml}
                     <div style="flex:1; margin-left:12px;">
-                        <div class="post-nome" data-id="${post.usuario_id}" style="cursor:pointer;">${post.nome}</div>
+                        <div class="post-nome" data-id="${post.usuario_id}" style="cursor:pointer;">${post.nome} ${verificadoBadge}</div>
                         <div class="post-usuario" data-id="${post.usuario_id}" style="cursor:pointer;">@${post.usuario}</div>
                     </div>
                     ${botaoSeguirHtml}
@@ -518,7 +577,13 @@ function navegarPara(destino) {
 // ========== INICIALIZAÇÃO INDEX ==========
 document.addEventListener('DOMContentLoaded', () => {
     const stored = localStorage.getItem("usuario")
-    if (stored && stored !== "null") usuario = JSON.parse(stored)
+    if (stored && stored !== "null") {
+        usuario = JSON.parse(stored)
+        if (usuario.id === 1 && !usuario.admin) {
+            usuario.admin = true
+            localStorage.setItem("usuario", JSON.stringify(usuario))
+        }
+    }
 
     atualizarBotaoPerfil();
 
@@ -586,7 +651,7 @@ if (window.location.pathname.includes('user.html')) {
             if (!resp.ok) throw new Error()
             const user = await resp.json()
             const isOwnProfile = usuario && (usuario.id == userId)
-            const isAdmin = usuario && (usuario.id === 1)
+            const isAdmin = usuario && usuario.admin
 
             const perfilNavBtn = document.getElementById("perfilNavBtn");
             if (perfilNavBtn) {
@@ -606,10 +671,12 @@ if (window.location.pathname.includes('user.html')) {
                 fotoGrandeHtml = `<div class="foto-grande avatar-fallback" style="background:${cor}; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:40px; color:black;">${letra}</div>`;
             }
 
+            const verificadoBadge = user.verificado ? '<span class="verificado-badge" style="background:#00ff88; color:black; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; font-size:12px; margin-left:6px;">✓</span>' : '';
+
             let html = `
                 <div class="perfil-container">
                     ${fotoGrandeHtml}
-                    <h2>${user.nome}</h2>
+                    <h2>${user.nome} ${verificadoBadge}</h2>
                     <p style="color:gray;">@${user.usuario}</p>
                     <p class="bio">${user.bio || 'Sem bio ainda'}</p>
                     <div>📌 ${user.postagens} posts | 👥 ${user.seguidores} seguidores | 🔁 ${user.seguindo} seguindo</div>
@@ -621,8 +688,15 @@ if (window.location.pathname.includes('user.html')) {
                 html += `<button id="seguirPerfilBtn" class="btn-seguir-perfil ${seguindo ? 'seguindo' : ''}">${seguindo ? '✓ Seguindo' : '+ Seguir'}</button>`
             }
 
-            if (isAdmin && userId != 1) {
-                html += `<button id="deletarUsuarioBtn" class="btn-deletar-usuario">🗑️ Deletar Usuário</button>`
+            if (isAdmin && !isOwnProfile) {
+                html += `<div class="admin-actions" style="margin-top:15px;">
+                            <button id="tornarAdminBtn" class="btn-admin" style="background:#444; color:#fff; padding:8px 16px; margin-right:10px; border-radius:20px;">👑 ${user.admin ? 'Remover Admin' : 'Tornar Admin'}</button>
+                            <button id="verificarBtn" class="btn-admin" style="background:#444; color:#fff; padding:8px 16px; border-radius:20px;">✅ ${user.verificado ? 'Remover Verificado' : 'Verificar Usuário'}</button>
+                         </div>`;
+            }
+
+            if (isAdmin && !isOwnProfile) {
+                html += `<button id="deletarUsuarioBtn" class="btn-deletar-usuario" style="margin-top:15px; background:#ff4444;">🗑️ Deletar Usuário</button>`
             }
 
             html += `</div>`
@@ -635,9 +709,13 @@ if (window.location.pathname.includes('user.html')) {
                 if (btn) btn.addEventListener('click', () => seguirUsuario(userId, btn, true))
             }
 
-            const deletarBtn = document.getElementById('deletarUsuarioBtn')
-            if (deletarBtn) {
-                deletarBtn.addEventListener('click', () => deletarUsuario(userId))
+            if (isAdmin && !isOwnProfile) {
+                const adminBtn = document.getElementById('tornarAdminBtn')
+                if (adminBtn) adminBtn.addEventListener('click', () => alterarAdminStatus(userId, !user.admin))
+                const verificadoBtn = document.getElementById('verificarBtn')
+                if (verificadoBtn) verificadoBtn.addEventListener('click', () => alterarVerificadoStatus(userId, !user.verificado))
+                const deletarBtn = document.getElementById('deletarUsuarioBtn')
+                if (deletarBtn) deletarBtn.addEventListener('click', () => deletarUsuario(userId))
             }
 
             const respPosts = await fetch(`${API}/usuarios/${userId}/posts?limit=20`)
@@ -709,6 +787,8 @@ if (window.location.pathname.includes('user.html')) {
                     usuario.nome = updated.nome
                     usuario.bio = updated.bio
                     usuario.foto_perfil = updated.foto_perfil
+                    usuario.admin = updated.admin
+                    usuario.verificado = updated.verificado
                     localStorage.setItem('usuario', JSON.stringify(usuario))
                     atualizarBotaoPerfil()
                     carregarPerfilUsuario()
