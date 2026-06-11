@@ -264,6 +264,9 @@ a {
 .post-nome {
     font-weight: bold;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .post-usuario {
@@ -645,6 +648,7 @@ a {
     background-size: auto !important;
 }
 
+/* ========== SELO VERIFICADO ========== */
 .verificado-badge {
     background: #00ff88;
     color: black;
@@ -652,10 +656,19 @@ a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
-    font-size: 10px;
-    margin-left: 4px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    margin-bottom: 5px;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+/* Ajuste para o selo dentro do título do perfil */
+.perfil-container h2 .verificado-badge {
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
 }
 
 /* ========== RESPONSIVIDADE ========== */
@@ -676,6 +689,8 @@ a {
     .bottom-nav { padding: 6px 0; }
     .nav-btn { padding: 6px 12px; font-size: 14px; }
     .btn-seguir-perfil { padding: 8px 16px; font-size: 14px; }
+    .verificado-badge { width: 16px; height: 16px; font-size: 10px; }
+    .perfil-container h2 .verificado-badge { width: 18px; height: 18px; font-size: 11px; }
 }
 
 @media (max-width: 480px) {
@@ -700,6 +715,8 @@ a {
     .perfil-container h2 { font-size: 1.4rem; }
     .bottom-nav { padding: 5px 0; }
     .nav-btn { padding: 5px 10px; font-size: 13px; }
+    .verificado-badge { width: 15px; height: 15px; font-size: 9px; }
+    .perfil-container h2 .verificado-badge { width: 16px; height: 16px; font-size: 10px; }
 }
 
 @keyframes fade {

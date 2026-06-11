@@ -671,7 +671,7 @@ if (window.location.pathname.includes('user.html')) {
                 fotoGrandeHtml = `<div class="foto-grande avatar-fallback" style="background:${cor}; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:40px; color:black;">${letra}</div>`;
             }
 
-            const verificadoBadge = user.verificado ? '<span class="verificado-badge" style="background:#00ff88; color:black; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; font-size:12px; margin-left:6px;">✓</span>' : '';
+            const verificadoBadge = user.verificado ? '<span class="verificado-badge">✓</span>' : '';
 
             let html = `
                 <div class="perfil-container">
