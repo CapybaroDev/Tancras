@@ -431,6 +431,8 @@ def feed():
 
 @app.route("/usuarios/search", methods=["GET"])
 def buscar_usuarios():
+    conn = None
+    cur = None
     try:
         q = request.args.get("q", "").strip()
         if len(q) < 2:
@@ -521,34 +523,51 @@ def atualizar_usuario(id):
         usuario_id = dados.get("usuario_id")
         if not usuario_id:
             return jsonify({"erro": "usuario_id obrigatório"}), 400
-        
-        # Verifica se o usuário atual é admin
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
-        user = cur.fetchone()
-        is_admin = user and user["admin"]
-        
-        if usuario_id != id and not is_admin:
-            return jsonify({"erro": "sem permissão"}), 403
-        
+
+        # 1. Conectar ao banco
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # 2. Verificar se o solicitante é admin
+        cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"erro": "usuário não encontrado"}), 404
+        is_admin = user["admin"]
+
+        # 3. Verificar permissão: só o próprio usuário ou admin podem editar
+        if usuario_id != id and not is_admin:
+            return jsonify({"erro": "sem permissão"}), 403
+
+        # 4. Buscar dados atuais do perfil a ser atualizado
         cur.execute("SELECT * FROM usuario WHERE id = %s", (id,))
         usuario = cur.fetchone()
         if not usuario:
             return jsonify({"erro": "usuário não encontrado"}), 404
-        
+
+        # 5. Obter novos valores (ou manter os antigos)
         nome = dados.get("nome", usuario["nome"])
         bio = dados.get("bio", usuario.get("bio"))
         foto_perfil = dados.get("foto_perfil", usuario.get("foto_perfil"))
+
         if foto_perfil and len(foto_perfil) > 1000000:
             return jsonify({"erro": "imagem muito grande"}), 400
-        
-        cur.execute("UPDATE usuario SET nome=%s, bio=%s, foto_perfil=%s WHERE id=%s", (nome, bio, foto_perfil, id))
+
+        # 6. Atualizar
+        cur.execute(
+            "UPDATE usuario SET nome=%s, bio=%s, foto_perfil=%s WHERE id=%s",
+            (nome, bio, foto_perfil, id)
+        )
         conn.commit()
-        cur.execute("SELECT id, nome, usuario, bio, foto_perfil, seguidores, seguindo, postagens, admin, verificado FROM usuario WHERE id=%s", (id,))
+
+        # 7. Retornar dados atualizados
+        cur.execute("""
+            SELECT id, nome, usuario, bio, foto_perfil, seguidores, seguindo, postagens, admin, verificado
+            FROM usuario WHERE id=%s
+        """, (id,))
         atualizado = cur.fetchone()
         return jsonify(atualizado)
+
     except Exception as e:
         return erro_resposta("Erro ao atualizar perfil", e, 500)
     finally:
@@ -617,10 +636,9 @@ def deletar_usuario(id):
         if cur: cur.close()
         if conn: conn.close()
 
-# ========== NOVA ROTA ADMIN ==========
+# ========== ROTA ADMIN ==========
 @app.route("/admin/usuarios/<int:id>", methods=["PUT"])
 def admin_atualizar_usuario(id):
-    """Rota para administrador definir admin e verificado de um usuário"""
     conn = None
     cur = None
     try:
