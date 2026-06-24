@@ -100,7 +100,6 @@ def criar_tabelas():
                 PRIMARY KEY (usuario_id, post_id)
             );
         """)
-        # Índices
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_usuario_id ON posts(usuario_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_data_post ON posts(data_post DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comentarios_post_id ON comentarios(post_id);")
@@ -124,7 +123,6 @@ with app.app_context():
         logger.critical(f"Falha ao criar tabelas: {e}")
         sys.exit(1)
 
-# ========== FUNÇÃO DE RESPOSTA DE ERRO ==========
 def erro_resposta(mensagem_publico, erro_interno=None, status=500):
     if DEBUG and erro_interno:
         logger.error(erro_interno)
@@ -426,7 +424,7 @@ def seguir(id):
         if cur: cur.close()
         if conn: conn.close()
 
-# ========== FEED COM ALGORITMO INTELIGENTE E CAMPO curtido ==========
+# ========== FEED COM ALGORITMO INTELIGENTE (CORRIGIDO) ==========
 @app.route("/feed", methods=["GET"])
 def feed():
     conn = None
@@ -443,7 +441,7 @@ def feed():
         cur.execute("SELECT COUNT(*) FROM posts")
         total_posts = cur.fetchone()["count"]
 
-        # CTE com score e flags
+        # CTE com todos os campos e flag curtido
         cur.execute("""
             WITH posts_with_score AS (
                 SELECT
@@ -484,6 +482,8 @@ def feed():
 
         posts = cur.fetchall()
         has_more = offset + limit < total_posts
+
+        logger.info(f"Feed carregado: {len(posts)} posts, página {page}")
 
         return jsonify({
             "posts": posts,
