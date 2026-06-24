@@ -18,6 +18,7 @@ Compress(app)
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 DB_SSLMODE = os.getenv("DB_SSLMODE", "require")
 
+# ========== CRIAÇÃO DAS TABELAS (garantida na inicialização) ==========
 def conectar():
     url = os.getenv("URL_DB")
     if not url:
@@ -106,6 +107,7 @@ def criar_tabelas():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comentarios_post_id ON comentarios(post_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_curtidas_post_id ON curtidas(post_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_seguidores_seguindo_id ON seguidores(seguindo_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_reposts_post_id ON reposts(post_id);")
         conn.commit()
         logger.info("Banco conectado e tabelas/índices criados.")
     except Exception as e:
@@ -115,6 +117,15 @@ def criar_tabelas():
         if cur: cur.close()
         if conn: conn.close()
 
+# Garante que as tabelas sejam criadas ao iniciar (funciona com Gunicorn)
+with app.app_context():
+    try:
+        criar_tabelas()
+    except Exception as e:
+        logger.critical(f"Falha ao criar tabelas: {e}")
+        sys.exit(1)
+
+# ========== FUNÇÃO DE RESPOSTA DE ERRO ==========
 def erro_resposta(mensagem_publico, erro_interno=None, status=500):
     if DEBUG and erro_interno:
         logger.error(erro_interno)
@@ -246,7 +257,6 @@ def deletar_post(id):
         if not post:
             return jsonify({"erro": "post não encontrado"}), 404
 
-        # Verifica se o usuário atual é admin
         cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
         user = cur.fetchone()
         is_admin = user and user["admin"]
@@ -297,7 +307,6 @@ def curtir_post(id):
         if cur: cur.close()
         if conn: conn.close()
 
-# NOVA ROTA: REPOST
 @app.route("/posts/<int:id>/repost", methods=["POST"])
 def repostar_post(id):
     conn = None
@@ -313,7 +322,6 @@ def repostar_post(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Verifica se já repostou
         cur.execute("SELECT * FROM reposts WHERE usuario_id = %s AND post_id = %s", (usuario_id, id))
         repost = cur.fetchone()
 
@@ -419,7 +427,7 @@ def seguir(id):
         if cur: cur.close()
         if conn: conn.close()
 
-# ROTA FEED COM ALGORITMO INTELIGENTE
+# ========== FEED COM ALGORITMO INTELIGENTE (CORRIGIDO) ==========
 @app.route("/feed", methods=["GET"])
 def feed():
     conn = None
@@ -436,34 +444,38 @@ def feed():
         cur.execute("SELECT COUNT(*) FROM posts")
         total_posts = cur.fetchone()["count"]
 
-        # Query com score e ordenação ponderada + aleatória
+        # CTE para calcular o score e depois ordenar
         cur.execute("""
-            SELECT
-                p.id,
-                p.usuario_id,
-                p.conteudo,
-                p.imagem,
-                p.curtidas,
-                p.comentarios,
-                p.reposts,
-                p.data_post,
-                u.nome,
-                u.usuario,
-                u.foto_perfil,
-                u.verificado,
-                CASE WHEN %s IS NOT NULL AND EXISTS (
-                    SELECT 1 FROM seguidores 
-                    WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
-                ) THEN true ELSE false END AS seguindo,
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM reposts WHERE usuario_id = %s AND post_id = p.id
-                ) THEN true ELSE false END AS repostado,
-                -- Score: curtidas peso 3, reposts peso 2, seguir peso 2, comentários peso 1
-                (p.curtidas * 3 + p.reposts * 2 + p.comentarios * 1 + CASE WHEN EXISTS (
-                    SELECT 1 FROM seguidores WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
-                ) THEN 2 ELSE 0 END) AS score
-            FROM posts p
-            JOIN usuario u ON p.usuario_id = u.id
+            WITH posts_with_score AS (
+                SELECT
+                    p.id,
+                    p.usuario_id,
+                    p.conteudo,
+                    p.imagem,
+                    p.curtidas,
+                    p.comentarios,
+                    p.reposts,
+                    p.data_post,
+                    u.nome,
+                    u.usuario,
+                    u.foto_perfil,
+                    u.verificado,
+                    CASE WHEN %s IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM seguidores
+                        WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
+                    ) THEN true ELSE false END AS seguindo,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM reposts WHERE usuario_id = %s AND post_id = p.id
+                    ) THEN true ELSE false END AS repostado,
+                    (p.curtidas * 3 + p.reposts * 2 + p.comentarios * 1 +
+                     CASE WHEN EXISTS (
+                         SELECT 1 FROM seguidores
+                         WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
+                     ) THEN 2 ELSE 0 END) AS score
+                FROM posts p
+                JOIN usuario u ON p.usuario_id = u.id
+            )
+            SELECT * FROM posts_with_score
             ORDER BY (score + random()) DESC
             LIMIT %s OFFSET %s
         """, (usuario_logado_id, usuario_logado_id, usuario_logado_id, usuario_logado_id, limit, offset))
@@ -736,9 +748,4 @@ def home():
     return jsonify({"mensagem": "API funcionando"})
 
 if __name__ == "__main__":
-    try:
-        criar_tabelas()
-    except Exception as e:
-        logger.critical("Erro crítico ao criar tabelas")
-        sys.exit(1)
     app.run(host="0.0.0.0", port=5000, debug=DEBUG)
