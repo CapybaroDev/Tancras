@@ -92,6 +92,14 @@ def criar_tabelas():
                 PRIMARY KEY (seguidor_id, seguindo_id)
             );
         """)
+        # NOVA TABELA: REPOSTS
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS reposts (
+                usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                PRIMARY KEY (usuario_id, post_id)
+            );
+        """)
         # Índices
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_usuario_id ON posts(usuario_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_data_post ON posts(data_post DESC);")
@@ -289,6 +297,45 @@ def curtir_post(id):
         if cur: cur.close()
         if conn: conn.close()
 
+# NOVA ROTA: REPOST
+@app.route("/posts/<int:id>/repost", methods=["POST"])
+def repostar_post(id):
+    conn = None
+    cur = None
+    try:
+        dados = request.get_json()
+        if not dados:
+            return erro_resposta("Dados JSON inválidos", 400)
+        usuario_id = dados.get("usuario_id")
+        if not usuario_id:
+            return jsonify({"erro": "usuário inválido"}), 400
+
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Verifica se já repostou
+        cur.execute("SELECT * FROM reposts WHERE usuario_id = %s AND post_id = %s", (usuario_id, id))
+        repost = cur.fetchone()
+
+        if repost:
+            cur.execute("DELETE FROM reposts WHERE usuario_id = %s AND post_id = %s", (usuario_id, id))
+            cur.execute("UPDATE posts SET reposts = reposts - 1 WHERE id = %s AND reposts > 0", (id,))
+            repostado = False
+        else:
+            cur.execute("INSERT INTO reposts (usuario_id, post_id) VALUES (%s, %s)", (usuario_id, id))
+            cur.execute("UPDATE posts SET reposts = reposts + 1 WHERE id = %s", (id,))
+            repostado = True
+
+        conn.commit()
+        cur.execute("SELECT reposts FROM posts WHERE id = %s", (id,))
+        total = cur.fetchone()["reposts"]
+        return jsonify({"repostado": repostado, "reposts": total})
+    except Exception as e:
+        return erro_resposta("Erro ao repostar", e, 500)
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
 @app.route("/posts/<int:id>/comentarios", methods=["POST"])
 def comentar(id):
     conn = None
@@ -372,6 +419,7 @@ def seguir(id):
         if cur: cur.close()
         if conn: conn.close()
 
+# ROTA FEED COM ALGORITMO INTELIGENTE
 @app.route("/feed", methods=["GET"])
 def feed():
     conn = None
@@ -388,6 +436,7 @@ def feed():
         cur.execute("SELECT COUNT(*) FROM posts")
         total_posts = cur.fetchone()["count"]
 
+        # Query com score e ordenação ponderada + aleatória
         cur.execute("""
             SELECT
                 p.id,
@@ -405,12 +454,19 @@ def feed():
                 CASE WHEN %s IS NOT NULL AND EXISTS (
                     SELECT 1 FROM seguidores 
                     WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
-                ) THEN true ELSE false END AS seguindo
+                ) THEN true ELSE false END AS seguindo,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM reposts WHERE usuario_id = %s AND post_id = p.id
+                ) THEN true ELSE false END AS repostado,
+                -- Score: curtidas peso 3, reposts peso 2, seguir peso 2, comentários peso 1
+                (p.curtidas * 3 + p.reposts * 2 + p.comentarios * 1 + CASE WHEN EXISTS (
+                    SELECT 1 FROM seguidores WHERE seguidor_id = %s AND seguindo_id = p.usuario_id
+                ) THEN 2 ELSE 0 END) AS score
             FROM posts p
             JOIN usuario u ON p.usuario_id = u.id
-            ORDER BY p.id DESC
+            ORDER BY (score + random()) DESC
             LIMIT %s OFFSET %s
-        """, (usuario_logado_id, usuario_logado_id, limit, offset))
+        """, (usuario_logado_id, usuario_logado_id, usuario_logado_id, usuario_logado_id, limit, offset))
 
         posts = cur.fetchall()
         has_more = offset + limit < total_posts
@@ -469,7 +525,6 @@ def buscar_usuario(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Verifica se o usuário logado é admin
         is_admin = False
         if usuario_logado_id:
             cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_logado_id,))
@@ -524,28 +579,23 @@ def atualizar_usuario(id):
         if not usuario_id:
             return jsonify({"erro": "usuario_id obrigatório"}), 400
 
-        # 1. Conectar ao banco
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # 2. Verificar se o solicitante é admin
         cur.execute("SELECT admin FROM usuario WHERE id = %s", (usuario_id,))
         user = cur.fetchone()
         if not user:
             return jsonify({"erro": "usuário não encontrado"}), 404
         is_admin = user["admin"]
 
-        # 3. Verificar permissão: só o próprio usuário ou admin podem editar
         if usuario_id != id and not is_admin:
             return jsonify({"erro": "sem permissão"}), 403
 
-        # 4. Buscar dados atuais do perfil a ser atualizado
         cur.execute("SELECT * FROM usuario WHERE id = %s", (id,))
         usuario = cur.fetchone()
         if not usuario:
             return jsonify({"erro": "usuário não encontrado"}), 404
 
-        # 5. Obter novos valores (ou manter os antigos)
         nome = dados.get("nome", usuario["nome"])
         bio = dados.get("bio", usuario.get("bio"))
         foto_perfil = dados.get("foto_perfil", usuario.get("foto_perfil"))
@@ -553,14 +603,12 @@ def atualizar_usuario(id):
         if foto_perfil and len(foto_perfil) > 1000000:
             return jsonify({"erro": "imagem muito grande"}), 400
 
-        # 6. Atualizar
         cur.execute(
             "UPDATE usuario SET nome=%s, bio=%s, foto_perfil=%s WHERE id=%s",
             (nome, bio, foto_perfil, id)
         )
         conn.commit()
 
-        # 7. Retornar dados atualizados
         cur.execute("""
             SELECT id, nome, usuario, bio, foto_perfil, seguidores, seguindo, postagens, admin, verificado
             FROM usuario WHERE id=%s
@@ -613,7 +661,6 @@ def deletar_usuario(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Verifica se o solicitante é admin
         cur.execute("SELECT admin FROM usuario WHERE id = %s", (admin_id,))
         admin_check = cur.fetchone()
         if not admin_check or not admin_check["admin"]:
@@ -650,13 +697,11 @@ def admin_atualizar_usuario(id):
         conn = conectar()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Verificar se quem está fazendo a requisição é admin
         cur.execute("SELECT admin FROM usuario WHERE id = %s", (admin_id,))
         admin_check = cur.fetchone()
         if not admin_check or not admin_check["admin"]:
             return jsonify({"erro": "Apenas administradores podem executar esta ação"}), 403
         
-        # Atualizar campos do usuário alvo
         set_clauses = []
         params = []
         if "admin" in dados:
