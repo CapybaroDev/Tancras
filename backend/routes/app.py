@@ -93,7 +93,6 @@ def criar_tabelas():
                 PRIMARY KEY (seguidor_id, seguindo_id)
             );
         """)
-        # NOVA TABELA: REPOSTS
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reposts (
                 usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
@@ -427,7 +426,7 @@ def seguir(id):
         if cur: cur.close()
         if conn: conn.close()
 
-# ========== FEED COM ALGORITMO INTELIGENTE (CORRIGIDO) ==========
+# ========== FEED COM ALGORITMO INTELIGENTE E CAMPO curtido ==========
 @app.route("/feed", methods=["GET"])
 def feed():
     conn = None
@@ -444,7 +443,7 @@ def feed():
         cur.execute("SELECT COUNT(*) FROM posts")
         total_posts = cur.fetchone()["count"]
 
-        # CTE para calcular o score e depois ordenar
+        # CTE com score e flags
         cur.execute("""
             WITH posts_with_score AS (
                 SELECT
@@ -467,6 +466,9 @@ def feed():
                     CASE WHEN EXISTS (
                         SELECT 1 FROM reposts WHERE usuario_id = %s AND post_id = p.id
                     ) THEN true ELSE false END AS repostado,
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM curtidas WHERE usuario_id = %s AND post_id = p.id
+                    ) THEN true ELSE false END AS curtido,
                     (p.curtidas * 3 + p.reposts * 2 + p.comentarios * 1 +
                      CASE WHEN EXISTS (
                          SELECT 1 FROM seguidores
@@ -478,7 +480,7 @@ def feed():
             SELECT * FROM posts_with_score
             ORDER BY (score + random()) DESC
             LIMIT %s OFFSET %s
-        """, (usuario_logado_id, usuario_logado_id, usuario_logado_id, usuario_logado_id, limit, offset))
+        """, (usuario_logado_id, usuario_logado_id, usuario_logado_id, usuario_logado_id, usuario_logado_id, limit, offset))
 
         posts = cur.fetchall()
         has_more = offset + limit < total_posts
